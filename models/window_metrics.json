@@ -1,0 +1,11 @@
+{
+  "status": "unavailable",
+  "message": "Window training data is unavailable or incomplete.",
+  "dataset_rows": 0,
+  "train_rows": 0,
+  "test_rows": 0,
+  "held_out_sessions": [],
+  "label_counts": {},
+  "logistic_accuracy": null,
+  "random_forest_accuracy": null
+}

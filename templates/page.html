@@ -1,0 +1,204 @@
+﻿{% extends "base.html" %}
+{% set title = page.title %}
+{% block body %}
+<script>
+    const SESSION_ID = "{{ browser.session_id }}";
+    const ACTOR_TYPE = "{{ browser.actor_type }}";
+    const BOT_TYPE = "{{ browser.bot_type }}";
+    const PAGE_NAME = "{{ page.page_name }}";
+</script>
+
+<div class="app-shell">
+    <header class="topbar">
+        <a href="/" class="brand-lockup">
+            <span class="brand-mark">CB</span>
+            <span>
+                <strong>Coordinated Bot Lab</strong>
+                <small>Behavioural Detection Platform</small>
+            </span>
+        </a>
+        <nav class="topnav">
+            <a href="/login" class="{{ 'active' if page_key == 'login' else '' }}">Login</a>
+            <a href="/search" class="{{ 'active' if page_key == 'search' else '' }}">Search</a>
+            <a href="/browse" class="{{ 'active' if page_key == 'browse' else '' }}">Browse</a>
+            <a href="/form" class="{{ 'active' if page_key == 'form' else '' }}">Form</a>
+            <a href="/dashboard">Dashboard</a>
+        </nav>
+        <div class="session-strip">
+            <span class="pill {{ browser.actor_type }}">{{ browser.actor_type }}</span>
+            <span>{{ browser.bot_type }}</span>
+            <span>{{ browser.session_id[:8] }}...</span>
+        </div>
+    </header>
+
+    <main class="app-main">
+        <section class="hero-slab">
+            <div class="hero-copy">
+                <p class="eyebrow">{{ page.eyebrow }}</p>
+                <h1>{{ page.headline }}</h1>
+                <p class="lead">{{ page.description }}</p>
+                <div class="hero-actions">
+                    <a class="btn primary" href="/dashboard">Open Dashboard</a>
+                    <a class="btn secondary" href="/?reset_session=1">Reset Human Session</a>
+                </div>
+            </div>
+            <aside class="hero-side">
+                <div class="mini-stat">
+                    <span>Session</span>
+                    <strong>{{ browser.session_id[:8] }}...</strong>
+                </div>
+                <div class="mini-stat">
+                    <span>Actor Type</span>
+                    <strong>{{ browser.actor_type }}</strong>
+                </div>
+                <div class="mini-stat">
+                    <span>Bot Label</span>
+                    <strong>{{ browser.bot_type }}</strong>
+                </div>
+            </aside>
+        </section>
+
+        {% if page_key == "landing" %}
+        <section class="feature-grid">
+            <article class="surface-card feature-card">
+                <h3>Guided User App</h3>
+                <p>Move through realistic login, search, browsing, and form pages to generate human interaction traces for the detector.</p>
+                <div class="link-stack">
+                    <a href="/login">Open Login Flow</a>
+                    <a href="/search">Open Search Flow</a>
+                    <a href="/browse">Open Browse Flow</a>
+                    <a href="/form">Open Form Flow</a>
+                </div>
+            </article>
+            <article class="surface-card feature-card">
+                <h3>Detection Pipeline</h3>
+                <p>The platform captures raw events, builds behavioural fingerprints, scores sessions with ML, and highlights suspicious coordination groups.</p>
+                <ul class="chip-list">
+                    <li>Event Logging</li>
+                    <li>Session Features</li>
+                    <li>Window Models</li>
+                    <li>Coordination Alerts</li>
+                </ul>
+            </article>
+            <article class="surface-card feature-card accent">
+                <h3>Demo Workflow</h3>
+                <p>Use the user pages manually, then switch to the dashboard to trigger fast, human-like, and coordinated bot sessions from one place.</p>
+                <code class="snippet">/dashboard -> Demo Controls -> Run Full Demo</code>
+            </article>
+        </section>
+        {% elif page_key == "login" %}
+        <section class="content-grid two-col">
+            <article class="surface-card">
+                <h3>Account Sign In</h3>
+                <form class="stack-form" data-track-form="login_form">
+                    <label>Email Address
+                        <input type="email" id="inputBox" name="email" placeholder="researcher@example.com">
+                    </label>
+                    <label>Password
+                        <input type="password" name="password" placeholder="Enter your password">
+                    </label>
+                    <label class="checkbox">
+                        <input type="checkbox" name="remember_me">
+                        <span>Remember this session on this device</span>
+                    </label>
+                    <button type="submit" id="btn">Sign In Securely</button>
+                </form>
+            </article>
+            <article class="surface-card note-card">
+                <h3>Signals Captured Here</h3>
+                <div class="signal-list">
+                    <div><strong>Typing rhythm</strong><span>keydown bursts, pauses, and pacing</span></div>
+                    <div><strong>Focus behaviour</strong><span>window focus changes and checkbox interaction</span></div>
+                    <div><strong>Submit timing</strong><span>reaction time before final action</span></div>
+                </div>
+            </article>
+        </section>
+        {% elif page_key == "search" %}
+        <section class="content-grid two-col">
+            <article class="surface-card">
+                <h3>Search Workspace</h3>
+                <div class="search-box">
+                    <input type="text" id="inputBox" placeholder="Search alerts, bot signatures, or cluster reviews">
+                    <button id="btn">Search</button>
+                </div>
+                <div class="result-list">
+                    <a href="#result-1" id="link1" class="result-tile" data-target-id="result-1">
+                        <strong>Alert Digest</strong>
+                        <span>Latest flagged sessions ranked by final risk.</span>
+                    </a>
+                    <a href="#result-2" id="link2" class="result-tile" data-target-id="result-2">
+                        <strong>Coordination Review</strong>
+                        <span>Cluster evidence with similarity and timing alignment.</span>
+                    </a>
+                </div>
+            </article>
+            <article class="surface-card">
+                <h3>Context Panel</h3>
+                <div id="result-1" class="context-card">
+                    <p>Search exploration creates lightweight navigation and click patterns that are useful for short-window bot scoring.</p>
+                </div>
+                <div id="result-2" class="context-card">
+                    <p>Repeated result targeting and highly consistent timing can indicate automation or group coordination.</p>
+                </div>
+            </article>
+        </section>
+        {% elif page_key == "browse" %}
+        <section class="feature-grid">
+            <article class="surface-card">
+                <h3>Threat Intelligence Brief</h3>
+                <p>Read through the brief and interact with content cards as a normal analyst would.</p>
+                <a href="#article-1" id="link1" class="text-link">Open Brief</a>
+            </article>
+            <article class="surface-card">
+                <h3>Timeline Review</h3>
+                <p>Investigate timing patterns and how they differ between human and automated sessions.</p>
+                <a href="#article-2" id="link2" class="text-link">Review Timeline</a>
+            </article>
+            <article class="surface-card">
+                <h3>Insight Save</h3>
+                <p>Bookmarking and delayed reading actions help create more realistic browsing behaviour.</p>
+                <button id="btn">Bookmark Insight</button>
+            </article>
+        </section>
+        <section class="reading-strip">
+            <div id="article-1" class="reading-card">
+                <h3>Behavioural Summary</h3>
+                <p>Humans usually produce more varied pauses, more scattered scroll depth, and less repeated transition structure than scripted sessions.</p>
+            </div>
+            <div id="article-2" class="reading-card">
+                <h3>Coordination Note</h3>
+                <p>Coordinated bots often move together in short windows, creating high similarity blocks that stand out in the analysis dashboard.</p>
+            </div>
+        </section>
+        {% elif page_key == "form" %}
+        <section class="content-grid two-col">
+            <article class="surface-card">
+                <h3>Application Form</h3>
+                <form class="stack-form" data-track-form="application_form">
+                    <label>Full Name
+                        <input type="text" id="inputBox" placeholder="Your full name">
+                    </label>
+                    <label>Organisation
+                        <input type="text" placeholder="Research Lab or Company">
+                    </label>
+                    <label>Use Case
+                        <textarea rows="5" placeholder="Describe your monitoring or security use case"></textarea>
+                    </label>
+                    <button type="submit" id="btn">Submit Application</button>
+                </form>
+            </article>
+            <article class="surface-card note-card">
+                <h3>What This Page Adds</h3>
+                <div class="signal-list">
+                    <div><strong>Field transitions</strong><span>how users move between tasks</span></div>
+                    <div><strong>Typing consistency</strong><span>burst length and form pacing</span></div>
+                    <div><strong>Completion style</strong><span>final submit behaviour and pause density</span></div>
+                </div>
+            </article>
+        </section>
+        {% endif %}
+    </main>
+</div>
+
+<script src="/static/script.js"></script>
+{% endblock %}
