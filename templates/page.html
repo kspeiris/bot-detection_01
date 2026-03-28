@@ -18,10 +18,10 @@
             </span>
         </a>
         <nav class="topnav">
-            <a href="/login" class="{{ 'active' if page_key == 'login' else '' }}">Login</a>
-            <a href="/search" class="{{ 'active' if page_key == 'search' else '' }}">Search</a>
-            <a href="/browse" class="{{ 'active' if page_key == 'browse' else '' }}">Browse</a>
-            <a href="/form" class="{{ 'active' if page_key == 'form' else '' }}">Form</a>
+            <a href="/login" class="{{ 'active' if page_key == 'login' else '' }}" aria-current="{{ 'page' if page_key == 'login' else 'false' }}">Login</a>
+            <a href="/search" class="{{ 'active' if page_key == 'search' else '' }}" aria-current="{{ 'page' if page_key == 'search' else 'false' }}">Search</a>
+            <a href="/browse" class="{{ 'active' if page_key == 'browse' else '' }}" aria-current="{{ 'page' if page_key == 'browse' else 'false' }}">Browse</a>
+            <a href="/form" class="{{ 'active' if page_key == 'form' else '' }}" aria-current="{{ 'page' if page_key == 'form' else 'false' }}">Form</a>
             <a href="/dashboard">Dashboard</a>
         </nav>
         <div class="session-strip">
@@ -31,7 +31,7 @@
         </div>
     </header>
 
-    <main class="app-main">
+    <main class="app-main" id="mainContent">
         <section class="hero-slab">
             <div class="hero-copy">
                 <p class="eyebrow">{{ page.eyebrow }}</p>
@@ -43,6 +43,11 @@
                 </div>
             </div>
             <aside class="hero-side">
+                {% if page_key == "landing" %}
+                <figure class="hero-visual">
+                    <img src="/static/images/landing-hero.png" alt="Landing page concept for the coordinated bot lab">
+                </figure>
+                {% endif %}
                 <div class="mini-stat">
                     <span>Session</span>
                     <strong>{{ browser.session_id[:8] }}...</strong>
@@ -86,22 +91,45 @@
                 <code class="snippet">/dashboard -> Demo Controls -> Run Full Demo</code>
             </article>
         </section>
+        <section class="feature-grid visual-grid">
+            <article class="surface-card visual-card">
+                <img src="/static/images/human-journey.png" alt="Human interaction journey through the application">
+                <div class="visual-copy">
+                    <h3>Human Journey</h3>
+                    <p>Use the login, search, browse, and form pages to create the sort of varied pacing and interaction paths expected from real users.</p>
+                </div>
+            </article>
+            <article class="surface-card visual-card">
+                <img src="/static/images/bot-vs-human-behaviour.png" alt="Comparison of bot behaviour and human behaviour">
+                <div class="visual-copy">
+                    <h3>Bot vs Human Behaviour</h3>
+                    <p>The detector looks for differences in timing, navigation repetition, and event cadence across short behavioural windows.</p>
+                </div>
+            </article>
+            <article class="surface-card visual-card">
+                <img src="/static/images/coordinated-bot-cluster.png" alt="Illustration of a coordinated bot cluster">
+                <div class="visual-copy">
+                    <h3>Coordinated Bot Cluster</h3>
+                    <p>Group-level analytics spotlight sessions that move together too closely to be organic, even when each one looks somewhat human.</p>
+                </div>
+            </article>
+        </section>
         {% elif page_key == "login" %}
         <section class="content-grid two-col">
             <article class="surface-card">
                 <h3>Account Sign In</h3>
                 <form class="stack-form" data-track-form="login_form">
                     <label>Email Address
-                        <input type="email" id="inputBox" name="email" placeholder="researcher@example.com">
+                        <input type="email" id="loginEmail" name="email" autocomplete="email" placeholder="researcher@example.com">
                     </label>
                     <label>Password
-                        <input type="password" name="password" placeholder="Enter your password">
+                        <input type="password" id="loginPassword" name="password" autocomplete="current-password" placeholder="Enter your password">
                     </label>
                     <label class="checkbox">
                         <input type="checkbox" name="remember_me">
                         <span>Remember this session on this device</span>
                     </label>
-                    <button type="submit" id="btn">Sign In Securely</button>
+                    <button type="submit" id="loginSubmit">Sign In Securely</button>
                 </form>
             </article>
             <article class="surface-card note-card">
@@ -117,16 +145,17 @@
         <section class="content-grid two-col">
             <article class="surface-card">
                 <h3>Search Workspace</h3>
-                <div class="search-box">
-                    <input type="text" id="inputBox" placeholder="Search alerts, bot signatures, or cluster reviews">
-                    <button id="btn">Search</button>
+                <div class="search-box" role="search" aria-label="Search bot detection data">
+                    <label class="sr-only" for="searchQuery">Search alerts, bot signatures, or cluster reviews</label>
+                    <input type="text" id="searchQuery" placeholder="Search alerts, bot signatures, or cluster reviews">
+                    <button type="button" id="searchAction">Search</button>
                 </div>
                 <div class="result-list">
-                    <a href="#result-1" id="link1" class="result-tile" data-target-id="result-1">
+                    <a href="#result-1" id="searchResultAlertDigest" class="result-tile" data-target-id="result-1">
                         <strong>Alert Digest</strong>
                         <span>Latest flagged sessions ranked by final risk.</span>
                     </a>
-                    <a href="#result-2" id="link2" class="result-tile" data-target-id="result-2">
+                    <a href="#result-2" id="searchResultCoordinationReview" class="result-tile" data-target-id="result-2">
                         <strong>Coordination Review</strong>
                         <span>Cluster evidence with similarity and timing alignment.</span>
                     </a>
@@ -147,17 +176,17 @@
             <article class="surface-card">
                 <h3>Threat Intelligence Brief</h3>
                 <p>Read through the brief and interact with content cards as a normal analyst would.</p>
-                <a href="#article-1" id="link1" class="text-link">Open Brief</a>
+                <a href="#article-1" id="browseOpenBrief" class="text-link">Open Brief</a>
             </article>
             <article class="surface-card">
                 <h3>Timeline Review</h3>
                 <p>Investigate timing patterns and how they differ between human and automated sessions.</p>
-                <a href="#article-2" id="link2" class="text-link">Review Timeline</a>
+                <a href="#article-2" id="browseReviewTimeline" class="text-link">Review Timeline</a>
             </article>
             <article class="surface-card">
                 <h3>Insight Save</h3>
                 <p>Bookmarking and delayed reading actions help create more realistic browsing behaviour.</p>
-                <button id="btn">Bookmark Insight</button>
+                <button type="button" id="bookmarkInsight">Bookmark Insight</button>
             </article>
         </section>
         <section class="reading-strip">
@@ -176,15 +205,15 @@
                 <h3>Application Form</h3>
                 <form class="stack-form" data-track-form="application_form">
                     <label>Full Name
-                        <input type="text" id="inputBox" placeholder="Your full name">
+                        <input type="text" id="fullName" name="full_name" autocomplete="name" placeholder="Your full name">
                     </label>
                     <label>Organisation
-                        <input type="text" placeholder="Research Lab or Company">
+                        <input type="text" id="organisation" name="organisation" autocomplete="organization" placeholder="Research Lab or Company">
                     </label>
                     <label>Use Case
-                        <textarea rows="5" placeholder="Describe your monitoring or security use case"></textarea>
+                        <textarea id="useCase" name="use_case" rows="5" placeholder="Describe your monitoring or security use case"></textarea>
                     </label>
-                    <button type="submit" id="btn">Submit Application</button>
+                    <button type="submit" id="formSubmit">Submit Application</button>
                 </form>
             </article>
             <article class="surface-card note-card">

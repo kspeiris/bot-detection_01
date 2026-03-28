@@ -1,5 +1,12 @@
 let dashboardState = null;
 
+function setEmptyState(containerId, message) {
+    const container = document.getElementById(containerId);
+    if (container) {
+        container.innerHTML = `<p class="empty-state">${message}</p>`;
+    }
+}
+
 function scoreBadge(score) {
     if (score >= 0.85) {
         return "critical";
@@ -67,13 +74,13 @@ function renderPosture(posture, summary) {
 }
 
 function renderFeatureSummary(featureSummary) {
-    const container = document.getElementById("featureSummary");
     const entries = Object.entries(featureSummary || {});
     if (!entries.length) {
-        container.innerHTML = "<p>No feature summary available yet.</p>";
+        setEmptyState("featureSummary", "No feature summary available yet.");
         return;
     }
-    container.innerHTML = entries.map(function ([label, value]) {
+
+    document.getElementById("featureSummary").innerHTML = entries.map(function ([label, value]) {
         return `<div class="metric-row"><span>${formatLabel(label)}</span><strong>${value}</strong></div>`;
     }).join("");
 }
@@ -110,25 +117,24 @@ function renderModelHealth(modelMetrics) {
 }
 
 function renderDataStatus(dataStatus) {
-    const container = document.getElementById("dataStatus");
     const rows = [
         ["Raw Events", dataStatus.events_updated_at],
         ["Session Features", dataStatus.features_updated_at],
         ["Window Features", dataStatus.window_features_updated_at]
     ];
 
-    container.innerHTML = rows.map(function ([label, value]) {
+    document.getElementById("dataStatus").innerHTML = rows.map(function ([label, value]) {
         return `<div class="metric-row"><span>${label}</span><strong>${formatTimestamp(value)}</strong></div>`;
     }).join("");
 }
 
 function renderGroups(groups) {
-    const container = document.getElementById("groupAlerts");
     if (!groups.length) {
-        container.innerHTML = "<p>No coordinated groups flagged in the current dataset.</p>";
+        setEmptyState("groupAlerts", "No coordinated groups flagged in the current dataset.");
         return;
     }
-    container.innerHTML = groups.map(function (group) {
+
+    document.getElementById("groupAlerts").innerHTML = groups.map(function (group) {
         const members = group.members.map(function (member) {
             return `<li>${member.session_id.slice(0, 8)}... <span>${member.bot_type}</span></li>`;
         }).join("");
@@ -147,7 +153,7 @@ function renderGroups(groups) {
 
 function distributionMarkup(entries) {
     if (!entries.length) {
-        return "<p>No distribution data available.</p>";
+        return "<p class='empty-state'>No distribution data available.</p>";
     }
 
     const max = Math.max(...entries.map(function (entry) { return entry.value; }), 1);
@@ -245,21 +251,55 @@ function getFilteredSessions() {
     return filtered;
 }
 
+function renderSessionDetails(payload) {
+    const reasonsMarkup = payload.reasons.length
+        ? payload.reasons.map(function (reason) { return `<li>${reason}</li>`; }).join("")
+        : "<li>No explicit rule reasons.</li>";
+
+    document.getElementById("explanationPanel").innerHTML = `
+        <div class="detail-header">
+            <div>
+                <h4>${payload.session_id}</h4>
+                <p class="muted">${formatLabel(payload.actor_type)} session${payload.bot_type !== "none" ? ` - ${formatLabel(payload.bot_type)}` : ""}</p>
+            </div>
+            <span class="posture-pill ${scoreBadge(payload.final_risk)}">Risk ${payload.final_risk}</span>
+        </div>
+        <div class="detail-grid">
+            <div class="metric-row"><span>Start Time</span><strong>${formatTimestamp(payload.start_time)}</strong></div>
+            <div class="metric-row"><span>Total Events</span><strong>${payload.total_events}</strong></div>
+            <div class="metric-row"><span>Duration</span><strong>${payload.session_duration}s</strong></div>
+            <div class="metric-row"><span>Event Rate</span><strong>${payload.event_rate}</strong></div>
+            <div class="metric-row"><span>Sequence Entropy</span><strong>${payload.entropy}</strong></div>
+            <div class="metric-row"><span>Repetition Score</span><strong>${payload.repetition_score}</strong></div>
+        </div>
+        <div class="reason-block">
+            <strong>Alert Reasons</strong>
+            <ul class="clean-list compact-list">${reasonsMarkup}</ul>
+        </div>
+    `;
+}
+
 function renderSessions() {
     const tbody = document.getElementById("sessionRows");
     const explanationPanel = document.getElementById("explanationPanel");
+    const tableMeta = document.getElementById("sessionTableMeta");
     const filteredSessions = getFilteredSessions();
+    const totalSessions = dashboardState ? dashboardState.sessions.length : 0;
+
+    if (tableMeta) {
+        tableMeta.textContent = `${filteredSessions.length} of ${totalSessions} sessions shown`;
+    }
 
     if (!filteredSessions.length) {
         tbody.innerHTML = "<tr><td colspan='8'>No session rows match the current filters.</td></tr>";
-        explanationPanel.innerHTML = "<p>Select a session row to view its strongest explanation details.</p>";
+        explanationPanel.innerHTML = "<p class='empty-state'>No details to show for the current filter set.</p>";
         return;
     }
 
     tbody.innerHTML = filteredSessions.map(function (session) {
         const reasons = session.reasons.join(", ") || "none";
         return `
-            <tr data-session="${encodeURIComponent(JSON.stringify(session))}">
+            <tr data-session="${encodeURIComponent(JSON.stringify(session))}" tabindex="0" role="button" aria-label="Inspect session ${session.session_id}" aria-pressed="false">
                 <td>${session.session_id.slice(0, 8)}...</td>
                 <td><span class="pill ${session.actor_type}">${session.actor_type}</span></td>
                 <td>${formatLabel(session.bot_type)}</td>
@@ -273,50 +313,38 @@ function renderSessions() {
     }).join("");
 
     tbody.querySelectorAll("tr[data-session]").forEach(function (row, index) {
-        row.addEventListener("click", function () {
-            tbody.querySelectorAll("tr").forEach(function (candidate) {
+        function openRow() {
+            tbody.querySelectorAll("tr[data-session]").forEach(function (candidate) {
                 candidate.classList.remove("selected");
+                candidate.setAttribute("aria-pressed", "false");
             });
-            row.classList.add("selected");
 
-            const payload = JSON.parse(decodeURIComponent(row.dataset.session));
-            explanationPanel.innerHTML = `
-                <div class="detail-header">
-                    <div>
-                        <h4>${payload.session_id}</h4>
-                        <p class="muted">${formatLabel(payload.actor_type)} session${payload.bot_type !== "none" ? ` · ${formatLabel(payload.bot_type)}` : ""}</p>
-                    </div>
-                    <span class="posture-pill ${scoreBadge(payload.final_risk)}">Risk ${payload.final_risk}</span>
-                </div>
-                <div class="detail-grid">
-                    <div class="metric-row"><span>Start Time</span><strong>${formatTimestamp(payload.start_time)}</strong></div>
-                    <div class="metric-row"><span>Total Events</span><strong>${payload.total_events}</strong></div>
-                    <div class="metric-row"><span>Duration</span><strong>${payload.session_duration}s</strong></div>
-                    <div class="metric-row"><span>Event Rate</span><strong>${payload.event_rate}</strong></div>
-                    <div class="metric-row"><span>Sequence Entropy</span><strong>${payload.entropy}</strong></div>
-                    <div class="metric-row"><span>Repetition Score</span><strong>${payload.repetition_score}</strong></div>
-                </div>
-                <div class="reason-block">
-                    <strong>Alert Reasons</strong>
-                    <ul class="clean-list compact-list">${payload.reasons.map(function (reason) { return `<li>${reason}</li>`; }).join("") || "<li>No explicit rule reasons.</li>"}</ul>
-                </div>
-            `;
+            row.classList.add("selected");
+            row.setAttribute("aria-pressed", "true");
+            renderSessionDetails(JSON.parse(decodeURIComponent(row.dataset.session)));
+        }
+
+        row.addEventListener("click", openRow);
+        row.addEventListener("keydown", function (event) {
+            if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                openRow();
+            }
         });
 
         if (index === 0) {
-            row.click();
+            openRow();
         }
     });
 }
 
 function renderTimeline(timeline) {
-    const container = document.getElementById("timeline");
     if (!timeline.length) {
-        container.innerHTML = "<p>No timeline data available.</p>";
+        setEmptyState("timeline", "No timeline data available.");
         return;
     }
 
-    container.innerHTML = timeline.map(function (point) {
+    document.getElementById("timeline").innerHTML = timeline.map(function (point) {
         return `
             <div class="timeline-item ${point.label}">
                 <span>${point.session_id.slice(0, 8)}...</span>
@@ -328,14 +356,13 @@ function renderTimeline(timeline) {
 }
 
 function renderDemoStatus(status) {
-    const container = document.getElementById("demoStatus");
     if (!status) {
-        container.innerHTML = "<p>No demo status available.</p>";
+        setEmptyState("demoStatus", "No demo status available.");
         return;
     }
 
     const preview = status.output_preview ? `<pre class="status-log">${status.output_preview}</pre>` : "";
-    container.innerHTML = `
+    document.getElementById("demoStatus").innerHTML = `
         <p><strong>Action:</strong> ${formatLabel(status.action)}</p>
         <p><strong>Status:</strong> <span class="pill ${status.status === "failed" ? "bot" : status.status === "running" ? "warning-pill" : "human"}">${status.status}</span></p>
         <p><strong>Message:</strong> ${status.message}</p>
@@ -360,9 +387,32 @@ function renderAll(data) {
 
 function refreshDashboard() {
     return fetch("/api/dashboard")
-        .then(function (response) { return response.json(); })
+        .then(function (response) {
+            if (!response.ok) {
+                throw new Error("Dashboard data could not be loaded.");
+            }
+            return response.json();
+        })
         .then(function (data) {
             renderAll(data);
+        })
+        .catch(function () {
+            setEmptyState("postureCard", "Dashboard data is temporarily unavailable.");
+            setEmptyState("modelHealth", "Model health data could not be loaded.");
+            setEmptyState("dataStatus", "Data freshness details could not be loaded.");
+            setEmptyState("featureSummary", "Feature summary could not be loaded.");
+            setEmptyState("distributionChart", "Distribution data could not be loaded.");
+            setEmptyState("riskChart", "Risk band data could not be loaded.");
+            setEmptyState("groupAlerts", "Group alerts could not be loaded.");
+            setEmptyState("timeline", "Timeline data could not be loaded.");
+            setEmptyState("demoStatus", "Demo status could not be loaded.");
+            document.getElementById("summaryCards").innerHTML = "";
+            document.getElementById("sessionRows").innerHTML = "<tr><td colspan='8'>Dashboard data could not be loaded.</td></tr>";
+            document.getElementById("explanationPanel").innerHTML = "<p class='empty-state'>Select a session row to view its strongest explanation details.</p>";
+            const tableMeta = document.getElementById("sessionTableMeta");
+            if (tableMeta) {
+                tableMeta.textContent = "0 of 0 sessions shown";
+            }
         });
 }
 
@@ -370,8 +420,8 @@ function bindDemoControls() {
     document.querySelectorAll(".demo-action").forEach(function (button) {
         button.addEventListener("click", function () {
             const action = button.dataset.action;
-            button.disabled = true;
             const originalText = button.textContent;
+            button.disabled = true;
             button.textContent = "Running...";
 
             fetch("/api/demo-action", {
@@ -381,12 +431,20 @@ function bindDemoControls() {
                 },
                 body: JSON.stringify({ action: action })
             })
-                .then(function (response) { return response.json(); })
+                .then(function (response) {
+                    if (!response.ok) {
+                        throw new Error("Demo action failed.");
+                    }
+                    return response.json();
+                })
                 .then(function (payload) {
                     if (payload.status !== "ok") {
                         alert(payload.output || payload.message || "Action failed.");
                     }
                     return refreshDashboard();
+                })
+                .catch(function () {
+                    setEmptyState("demoStatus", "The demo action could not be completed.");
                 })
                 .finally(function () {
                     button.disabled = false;
@@ -407,7 +465,7 @@ function bindTableControls() {
     });
 }
 
-refreshDashboard().then(function () {
+refreshDashboard().finally(function () {
     bindDemoControls();
     bindTableControls();
 });

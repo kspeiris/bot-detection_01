@@ -16,6 +16,8 @@ function sendEvent(eventType, x = null, y = null, targetId = "") {
             viewport_height: window.innerHeight,
             timestamp: Date.now()
         })
+    }).catch(function () {
+        // Keep the demo UX responsive even if telemetry is unavailable.
     });
 }
 
@@ -23,7 +25,11 @@ function targetNameFor(element) {
     if (!element) {
         return "";
     }
-    return element.dataset.targetId || element.id || element.name || element.tagName.toLowerCase();
+    const interactive = element.closest("[data-target-id], [id], [name], a, button, input, textarea, select");
+    if (!interactive) {
+        return element.tagName.toLowerCase();
+    }
+    return interactive.dataset.targetId || interactive.id || interactive.name || interactive.tagName.toLowerCase();
 }
 
 sendEvent("page_screen_change", null, null, PAGE_NAME);
@@ -64,6 +70,7 @@ document.querySelectorAll("form[data-track-form]").forEach(function (form) {
         const button = form.querySelector("button[type='submit'], button");
         if (button) {
             button.textContent = "Submitted";
+            button.disabled = true;
         }
     });
 });
