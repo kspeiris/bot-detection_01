@@ -181,6 +181,8 @@ p {
     padding: 28px;
     display: grid;
     gap: 22px;
+    width: min(1360px, 100%);
+    margin: 0 auto;
 }
 
 .hero-slab,
@@ -195,8 +197,8 @@ p {
 
 .hero-slab {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 280px;
-    gap: 20px;
+    grid-template-columns: minmax(0, 1.15fr) minmax(280px, 360px);
+    gap: 24px;
     align-items: stretch;
     background:
         linear-gradient(135deg, rgba(216, 107, 59, 0.12), rgba(16, 33, 43, 0.04)),
@@ -236,6 +238,12 @@ p {
     gap: 18px;
 }
 
+.hero-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+}
+
 .hero-side {
     display: grid;
     gap: 12px;
@@ -249,6 +257,14 @@ p {
     border-radius: var(--radius-sm);
     border: 1px solid rgba(221, 209, 194, 0.8);
     background: rgba(255, 255, 255, 0.68);
+}
+
+.hero-visual {
+    min-height: 210px;
+}
+
+.dashboard-preview {
+    min-height: 220px;
 }
 
 .hero-visual img,
@@ -278,11 +294,16 @@ p {
 
 .feature-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
+    align-items: stretch;
 }
 
-.content-grid.two-col,
+.content-grid.two-col {
+    grid-template-columns: minmax(0, 1.05fr) minmax(280px, 0.95fr);
+}
+
 .dashboard-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: stretch;
 }
 
 .surface-card {
@@ -343,10 +364,11 @@ p {
 
 .reading-strip {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: stretch;
 }
 
 .visual-grid {
-    align-items: start;
+    align-items: stretch;
 }
 
 .visual-card {
@@ -354,6 +376,11 @@ p {
     padding: 0;
     display: grid;
     grid-template-rows: auto 1fr;
+}
+
+.feature-card,
+.reading-card {
+    height: 100%;
 }
 
 .visual-card img {
@@ -441,7 +468,7 @@ p {
 }
 
 .stats-grid {
-    grid-template-columns: repeat(5, minmax(0, 1fr));
+    grid-template-columns: repeat(5, minmax(140px, 1fr));
 }
 
 .dashboard-grid.wide {
@@ -488,6 +515,10 @@ p {
     border-radius: 999px;
     font-weight: 600;
     transition: background-color 0.2s ease, color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.hero-actions .btn {
+    min-width: 180px;
 }
 
 .btn.primary {
@@ -596,9 +627,9 @@ select:focus-visible {
 
 .dashboard-header {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(320px, 0.8fr);
-    align-items: center;
-    gap: 20px;
+    grid-template-columns: minmax(0, 1.1fr) minmax(320px, 0.9fr);
+    align-items: start;
+    gap: 24px;
 }
 
 .dashboard-header-side {
@@ -888,12 +919,15 @@ tbody tr.selected {
     .feature-grid,
     .content-grid.two-col,
     .reading-strip,
-    .stats-grid,
     .dashboard-grid,
     .control-grid,
     .posture-grid,
     .toolbar-actions {
         grid-template-columns: 1fr;
+    }
+
+    .stats-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
     }
 
     .session-toolbar,
@@ -980,6 +1014,10 @@ tbody tr.selected {
     }
 
     .hero-actions .btn {
-        min-width: auto;
+        min-width: 0;
+    }
+
+    .stats-grid {
+        grid-template-columns: 1fr;
     }
 }

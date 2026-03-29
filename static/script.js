@@ -16,9 +16,7 @@ function sendEvent(eventType, x = null, y = null, targetId = "") {
             viewport_height: window.innerHeight,
             timestamp: Date.now()
         })
-    }).catch(function () {
-        // Keep the demo UX responsive even if telemetry is unavailable.
-    });
+    }).catch(function () {});
 }
 
 function targetNameFor(element) {
