@@ -8,11 +8,19 @@ TIME_THRESHOLD = 5.0
 
 
 def select_candidate_sessions(df: pd.DataFrame) -> pd.DataFrame:
+    if "label" in df.columns:
+        return df[df["label"] == "bot"].reset_index(drop=True)
     return df[df["actor_type"] == "bot"].reset_index(drop=True)
 
 
 def build_similarity_matrix(df: pd.DataFrame):
-    numeric_features = df.drop(columns=BEHAVIOR_EXCLUDE_COLUMNS, errors="ignore")
+    numeric_features = (
+        df.drop(columns=BEHAVIOR_EXCLUDE_COLUMNS, errors="ignore")
+        .select_dtypes(include="number")
+        .fillna(0.0)
+    )
+    if numeric_features.empty:
+        return []
     return cosine_similarity(numeric_features)
 
 

@@ -2,10 +2,10 @@
   "browsers": [],
   "drivers": [
     {
-      "major_browser_version": "146",
+      "major_browser_version": "147",
       "driver_name": "chromedriver",
-      "driver_version": "146.0.7680.165",
-      "driver_ttl": 1774700696
+      "driver_version": "147.0.7727.117",
+      "driver_ttl": 1777527365
     }
   ],
   "stats": [
@@ -16,7 +16,7 @@
       "arch": "x86_64",
       "lang": "python",
       "selenium_version": "4.38",
-      "stats_ttl": 1774700692
+      "stats_ttl": 1777527332
     }
   ]
 }

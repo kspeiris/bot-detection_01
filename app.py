@@ -20,6 +20,7 @@ from detection.coordination_engine import (
 )
 from detection.risk_fusion import build_alert
 from detection.rules import evaluate_rule_flags, rule_score
+from ingestion.validators import validate_event_payload
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", secrets.token_hex(16))
@@ -174,7 +175,7 @@ def load_json_payload(path):
     if not path.exists():
         return {}
     try:
-        return json.loads(path.read_text())
+        return json.loads(path.read_text(encoding="utf-8"))
     except Exception:
         return {}
 
@@ -294,7 +295,7 @@ def dashboard_payload():
             reasons = evaluate_rule_flags(row)
             rule_risk = round(float(rule_score(row)), 3)
             individual_score = round(float(session_scores.get(row["session_id"], 0.0)), 3)
-            coordination_score = 0.95 if row["session_id"] in coordination_sessions else 0.05
+            coordination_score = 0.95 if row["session_id"] in coordination_sessions else 0.0
             if row["session_id"] in coordination_sessions:
                 reasons = reasons + ["matched coordinated group"]
             alert = build_alert(
@@ -302,6 +303,7 @@ def dashboard_payload():
                 individual_score,
                 coordination_score,
                 reasons,
+                rule_score_value=rule_risk,
             )
             session_rows.append(
                 {
@@ -484,7 +486,7 @@ def api_dashboard():
 
 @app.route("/api/demo-action", methods=["POST"])
 def api_demo_action():
-    payload = request.get_json(force=True)
+    payload = request.get_json(silent=True) or {}
     action = payload.get("action", "")
 
     command_map = {
@@ -517,7 +519,11 @@ def api_demo_action():
 
 @app.route("/log", methods=["POST"])
 def log():
-    data = request.get_json(force=True)
+    data = request.get_json(silent=True) or {}
+    errors = validate_event_payload(data)
+    if errors:
+        return jsonify({"status": "error", "errors": errors}), 400
+
     with CSV_PATH.open("a", newline="") as handle:
         writer = csv.writer(handle)
         writer.writerow(
@@ -528,7 +534,7 @@ def log():
                 data["event_type"],
                 data.get("x"),
                 data.get("y"),
-                data["timestamp"],
+                int(data["timestamp"]),
             ]
         )
     return {"status": "ok"}

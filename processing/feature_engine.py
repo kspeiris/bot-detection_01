@@ -11,6 +11,7 @@ DEFAULT_INPUT_FILE = PROJECT_ROOT / "data" / "events.csv"
 DEFAULT_OUTPUT_FILE = PROJECT_ROOT / "data" / "features.csv"
 DEFAULT_WINDOW_OUTPUT_FILE = PROJECT_ROOT / "data" / "window_features.csv"
 NGRAM_FEATURES = ["CC", "CK", "CS", "CM", "KC", "KK", "KS", "MC", "MS", "SC", "SK", "SS"]
+IDLE_GAP_THRESHOLD_SECONDS = 1.5
 
 FEATURE_COLUMNS = [
     "session_id",
@@ -52,6 +53,13 @@ def load_events(input_file: Path = DEFAULT_INPUT_FILE) -> pd.DataFrame:
         raise FileNotFoundError(f"Input file not found: {input_file}")
 
     df = pd.read_csv(input_file)
+    if "actor_type" not in df.columns:
+        df["actor_type"] = "human"
+    if "bot_type" not in df.columns:
+        df["bot_type"] = "none"
+
+    df["actor_type"] = df["actor_type"].fillna("human")
+    df["bot_type"] = df["bot_type"].fillna("none")
     df["timestamp"] = pd.to_numeric(df["timestamp"], errors="coerce")
     df = df.dropna(subset=["session_id", "event_type", "timestamp"])
     return df
@@ -80,6 +88,7 @@ def extract_session_features(group: pd.DataFrame) -> Dict:
     mousemove_count = int((group["event_type"] == "mousemove").sum())
 
     group["time_diff"] = group["timestamp"].diff() / 1000.0
+    valid_time_diffs = group["time_diff"].fillna(0).clip(lower=0)
 
     mean_interval = group["time_diff"].mean()
     std_interval = group["time_diff"].std()
@@ -95,9 +104,9 @@ def extract_session_features(group: pd.DataFrame) -> Dict:
     keydown_ratio = keydown_count / total_events if total_events else 0.0
     mousemove_ratio = mousemove_count / total_events if total_events else 0.0
 
-    total_idle_time = group["time_diff"].fillna(0).clip(lower=0).sum()
+    total_idle_time = valid_time_diffs.where(valid_time_diffs >= IDLE_GAP_THRESHOLD_SECONDS, 0).sum()
     idle_ratio = total_idle_time / session_duration if session_duration > 0 else 0.0
-    longest_idle_gap = group["time_diff"].max()
+    longest_idle_gap = valid_time_diffs.max()
 
     symbols = build_symbol_sequence(group["event_type"].tolist())
     entropy = sequence_entropy(symbols)

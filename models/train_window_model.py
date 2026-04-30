@@ -25,6 +25,7 @@ DROP_COLUMNS = ["analysis_unit_id", "session_id", "actor_type", "bot_type", "lab
 
 
 def reset_artifacts(message, extra=None):
+    METRICS_FILE.parent.mkdir(parents=True, exist_ok=True)
     for artifact in ARTIFACTS:
         artifact.unlink(missing_ok=True)
 
@@ -80,6 +81,7 @@ def evaluate_model(name, model, X_test, y_test):
 
 
 def save_feature_importance(model, feature_names):
+    IMPORTANCE_PLOT.parent.mkdir(parents=True, exist_ok=True)
     importances = pd.Series(model.feature_importances_, index=feature_names).sort_values()
     plt.figure(figsize=(9, 7))
     plt.barh(importances.index, importances.values)
@@ -103,6 +105,7 @@ def main():
     logistic_model = LogisticRegression(max_iter=1000, random_state=42)
     logistic_model.fit(X_train, y_train)
     logistic_accuracy = evaluate_model("Window Logistic Regression", logistic_model, X_test, y_test)
+    LOGISTIC_MODEL_FILE.parent.mkdir(parents=True, exist_ok=True)
     joblib.dump(logistic_model, LOGISTIC_MODEL_FILE)
 
     rf_model = RandomForestClassifier(n_estimators=100, max_depth=5, random_state=42)
