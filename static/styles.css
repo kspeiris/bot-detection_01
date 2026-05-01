@@ -220,6 +220,7 @@ p {
     border-radius: 999px;
     color: var(--ink-soft);
     font-size: 0.96rem;
+    white-space: nowrap;
 }
 
 .topnav a.active,
@@ -1008,10 +1009,19 @@ p {
 
 .control-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: stretch;
 }
 
 .control-span-2 {
     grid-column: span 2;
+}
+
+.control-grid .btn,
+.control-grid button {
+    width: 100%;
+    min-height: 62px;
+    padding-inline: 22px;
+    text-align: center;
 }
 
 .timeline-item {
@@ -1128,6 +1138,15 @@ p {
     background: rgba(255, 255, 255, 0.55);
 }
 
+.table-footer {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: center;
+    gap: 16px;
+    margin-top: 14px;
+}
+
 .table-date {
     display: grid;
     gap: 4px;
@@ -1179,9 +1198,55 @@ tbody tr.selected {
 }
 
 .table-meta {
-    margin: 14px 0 0;
+    margin: 0;
     color: var(--ink-soft);
     font-size: 0.92rem;
+}
+
+.pagination-shell,
+.pagination-pages {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+}
+
+.pagination-shell {
+    justify-content: flex-end;
+}
+
+.pagination-summary {
+    color: var(--ink-soft);
+    font-size: 0.9rem;
+    margin-right: 6px;
+}
+
+.pagination-btn,
+.pagination-page {
+    min-height: 44px;
+    padding: 10px 14px;
+    border: 1px solid rgba(23, 50, 74, 0.12);
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.92);
+    color: var(--paper-dark);
+    box-shadow: none;
+}
+
+.pagination-page.is-active {
+    background: linear-gradient(135deg, var(--accent), #efb97f);
+    border-color: transparent;
+    color: #fff8ef;
+}
+
+.pagination-gap {
+    padding: 0 4px;
+    color: var(--ink-soft);
+}
+
+.reasons-cell {
+    min-width: 240px;
+    max-width: 360px;
+    color: var(--ink-soft);
 }
 
 .explanation-card {
@@ -1315,9 +1380,12 @@ button {
     justify-content: center;
     gap: 10px;
     padding: 13px 18px;
+    min-height: 52px;
     border: 0;
     border-radius: 999px;
     font-weight: 600;
+    line-height: 1.1;
+    white-space: nowrap;
     cursor: pointer;
     transition: transform 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease, border-color 0.2s ease;
 }
@@ -1344,15 +1412,32 @@ button {
     display: flex;
     flex-wrap: wrap;
     gap: 12px;
+    align-items: stretch;
 }
 
 .hero-actions .btn {
     min-width: 182px;
 }
 
+.stack-form button,
+.search-box button,
+#bookmarkInsight {
+    min-height: 54px;
+}
+
+.stack-form button {
+    width: 100%;
+}
+
 button:disabled,
 .btn:disabled {
     opacity: 0.65;
+    cursor: not-allowed;
+    transform: none;
+}
+
+.demo-action:disabled,
+#refreshDashboardControl:disabled {
     cursor: wait;
 }
 
@@ -1436,6 +1521,29 @@ select:focus-visible {
     .stats-grid,
     .dashboard-grid-triple {
         grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 1180px) {
+    .dashboard-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .session-toolbar {
+        align-items: start;
+    }
+
+    .toolbar-actions {
+        justify-content: flex-start;
+        width: 100%;
+    }
+
+    .table-footer {
+        align-items: stretch;
+    }
+
+    .pagination-shell {
+        justify-content: flex-start;
     }
 }
 
@@ -1534,11 +1642,31 @@ select:focus-visible {
         width: 100%;
     }
 
+    .topnav {
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        padding-bottom: 4px;
+        scrollbar-width: none;
+    }
+
+    .topnav::-webkit-scrollbar {
+        display: none;
+    }
+
     .hero-actions .btn,
     .btn,
     button,
-    .query-chip {
+    .query-chip,
+    .pagination-btn {
         width: 100%;
+    }
+
+    .pagination-pages {
+        width: 100%;
+    }
+
+    .pagination-page {
+        flex: 1 1 48px;
     }
 
     .search-box {

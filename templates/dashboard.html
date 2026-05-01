@@ -140,6 +140,14 @@
                         <input id="sessionSearch" type="search" placeholder="Search session, bot type, or reason">
                     </label>
                     <label class="table-filter">
+                        <span>Rows</span>
+                        <select id="sessionPageSize">
+                            <option value="8">8 Rows</option>
+                            <option value="12" selected>12 Rows</option>
+                            <option value="20">20 Rows</option>
+                        </select>
+                    </label>
+                    <label class="table-filter">
                         <span>Filter</span>
                         <select id="sessionFilter">
                             <option value="all">All Sessions</option>
@@ -178,7 +186,14 @@
                     <tbody id="sessionRows"></tbody>
                 </table>
             </div>
-            <p id="sessionTableMeta" class="table-meta" aria-live="polite"></p>
+            <div class="table-footer">
+                <p id="sessionTableMeta" class="table-meta" aria-live="polite"></p>
+                <div class="pagination-shell" aria-label="Session table pagination">
+                    <button type="button" id="sessionPrevPage" class="pagination-btn">Previous</button>
+                    <div id="sessionPageButtons" class="pagination-pages" aria-live="polite"></div>
+                    <button type="button" id="sessionNextPage" class="pagination-btn">Next</button>
+                </div>
+            </div>
         </article>
     </section>
 </div>

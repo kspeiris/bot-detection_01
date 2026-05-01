@@ -81,7 +81,7 @@ LAST_DEMO_RUN = {
     "action": "idle",
     "status": "ready",
     "message": "Dashboard controls are ready.",
-    "detail": "Choose a demo action to generate traffic or refresh analytics.",
+    "detail": "Choose a demo action to launch a live Chrome run or refresh analytics.",
     "updated_at": None,
     "output_preview": "",
     "failed_command": "",
@@ -214,7 +214,7 @@ def summarize_demo_failure(action_name, command, output, timed_out=False):
         detail = "The task took longer than five minutes. Try the smaller actions first or rerun once the app is idle."
     elif "devtoolsactiveport" in normalized or "sessionnotcreatedexception" in normalized:
         summary = "Chrome could not start for the automated browser run."
-        detail = "The runner now requests a headless Chrome profile. If this still fails, confirm Chrome is installed and available to Selenium on this machine."
+        detail = "The demo now launches a visible Chrome window by default. If this still fails, confirm Chrome is installed and available to Selenium on this machine."
     elif "nosuchdriverexception" in normalized or "unable to obtain driver" in normalized:
         summary = "Selenium could not prepare a working Chrome driver."
         detail = "Check the local Chrome install and verify the Selenium cache directory is writable."
@@ -457,8 +457,8 @@ def dashboard_payload():
 def run_demo_commands(commands, action_name):
     env = os.environ.copy()
     env["SE_CACHE_PATH"] = str(SELENIUM_CACHE)
-    env.setdefault("BOT_DEMO_HEADLESS", "1")
-    env.setdefault("BOT_DEMO_DRIVER_MODE", "synthetic")
+    env.setdefault("BOT_DEMO_HEADLESS", "0")
+    env.setdefault("BOT_DEMO_DRIVER_MODE", "browser")
     env.setdefault("PYTHONUNBUFFERED", "1")
     SELENIUM_CACHE.mkdir(parents=True, exist_ok=True)
 

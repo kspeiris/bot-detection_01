@@ -1,16 +1,16 @@
 {
   "status": "ready",
   "message": "Session model trained successfully.",
-  "dataset_rows": 40,
-  "train_rows": 32,
-  "test_rows": 8,
+  "dataset_rows": 70,
+  "train_rows": 56,
+  "test_rows": 14,
   "label_counts": {
-    "human": 24,
-    "bot": 16
+    "bot": 39,
+    "human": 31
   },
-  "logistic_accuracy": 1.0,
-  "random_forest_accuracy": 1.0,
-  "xgboost_accuracy": 1.0,
+  "logistic_accuracy": 0.9286,
+  "random_forest_accuracy": 0.8571,
+  "xgboost_accuracy": 0.8571,
   "feature_columns": [
     "total_events",
     "click_count",

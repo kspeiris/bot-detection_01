@@ -1,6 +1,9 @@
 let dashboardState = null;
 let autoRefreshHandle = null;
 let dashboardRequestInFlight = false;
+let selectedSessionId = null;
+let sessionTablePage = 1;
+const DEFAULT_SESSION_PAGE_SIZE = 12;
 
 function escapeHtml(value) {
     return String(value ?? "")
@@ -326,6 +329,39 @@ function getFilterState() {
     };
 }
 
+function getSessionPageSize() {
+    const element = document.getElementById("sessionPageSize");
+    const value = element ? Number(element.value) : DEFAULT_SESSION_PAGE_SIZE;
+    return Number.isFinite(value) && value > 0 ? value : DEFAULT_SESSION_PAGE_SIZE;
+}
+
+function buildPaginationSequence(totalPages, currentPage) {
+    if (totalPages <= 7) {
+        return Array.from({ length: totalPages }, function (_, index) {
+            return index + 1;
+        });
+    }
+
+    const pages = [1];
+    const start = Math.max(2, currentPage - 1);
+    const end = Math.min(totalPages - 1, currentPage + 1);
+
+    if (start > 2) {
+        pages.push("gap-start");
+    }
+
+    for (let page = start; page <= end; page += 1) {
+        pages.push(page);
+    }
+
+    if (end < totalPages - 1) {
+        pages.push("gap-end");
+    }
+
+    pages.push(totalPages);
+    return pages;
+}
+
 function getFilteredSessions() {
     const sessions = dashboardState ? dashboardState.sessions.slice() : [];
     const state = getFilterState();
@@ -405,7 +441,7 @@ function scoreRowMarkup(label, score) {
 
 function renderSessionDetails(payload) {
     const reasonsMarkup = payload.reasons.length
-        ? payload.reasons.map(function (reason) { return `<li>${reason}</li>`; }).join("")
+        ? payload.reasons.map(function (reason) { return `<li>${escapeHtml(reason)}</li>`; }).join("")
         : "<li>No explicit rule reasons.</li>";
     const scoreRows = [
         scoreRowMarkup("Rule Signal", payload.rule_score),
@@ -417,8 +453,8 @@ function renderSessionDetails(payload) {
     document.getElementById("explanationPanel").innerHTML = `
         <div class="detail-header">
             <div>
-                <h4>${payload.session_id}</h4>
-                <p class="muted">${formatLabel(payload.actor_type)} session${payload.bot_type !== "none" ? ` - ${formatLabel(payload.bot_type)}` : ""}</p>
+                <h4>${escapeHtml(payload.session_id)}</h4>
+                <p class="muted">${escapeHtml(formatLabel(payload.actor_type))} session${payload.bot_type !== "none" ? ` - ${escapeHtml(formatLabel(payload.bot_type))}` : ""}</p>
             </div>
             <span class="posture-pill ${scoreBadge(payload.final_risk)}">Risk ${payload.final_risk}</span>
         </div>
@@ -441,57 +477,130 @@ function renderSessionDetails(payload) {
     `;
 }
 
+function renderSessionPagination(totalItems, totalPages, currentPage, startIndex, endIndex, totalSessions) {
+    const tableMeta = document.getElementById("sessionTableMeta");
+    const prevButton = document.getElementById("sessionPrevPage");
+    const nextButton = document.getElementById("sessionNextPage");
+    const pagesContainer = document.getElementById("sessionPageButtons");
+
+    if (tableMeta) {
+        if (!totalItems) {
+            tableMeta.textContent = `0 of ${totalSessions} sessions shown`;
+        } else {
+            tableMeta.textContent = `${startIndex}-${endIndex} of ${totalItems} filtered sessions (${totalSessions} total)`;
+        }
+    }
+
+    if (prevButton) {
+        prevButton.disabled = currentPage <= 1 || totalItems === 0;
+    }
+
+    if (nextButton) {
+        nextButton.disabled = currentPage >= totalPages || totalItems === 0;
+    }
+
+    if (!pagesContainer) {
+        return;
+    }
+
+    if (totalItems === 0) {
+        pagesContainer.innerHTML = `<span class="pagination-summary">No pages</span>`;
+        return;
+    }
+
+    const pageMarkup = buildPaginationSequence(totalPages, currentPage).map(function (entry) {
+        if (typeof entry === "string") {
+            return `<span class="pagination-gap" aria-hidden="true">...</span>`;
+        }
+
+        return `
+            <button
+                type="button"
+                class="pagination-page ${entry === currentPage ? "is-active" : ""}"
+                data-page="${entry}"
+                aria-label="Go to page ${entry}"
+                aria-current="${entry === currentPage ? "page" : "false"}"
+            >${entry}</button>
+        `;
+    }).join("");
+
+    pagesContainer.innerHTML = `
+        <span class="pagination-summary">Page ${currentPage} of ${totalPages}</span>
+        ${pageMarkup}
+    `;
+
+    pagesContainer.querySelectorAll("[data-page]").forEach(function (button) {
+        button.addEventListener("click", function () {
+            sessionTablePage = Number(button.dataset.page) || 1;
+            renderSessions();
+        });
+    });
+}
+
 function renderSessions() {
     const tbody = document.getElementById("sessionRows");
     const explanationPanel = document.getElementById("explanationPanel");
-    const tableMeta = document.getElementById("sessionTableMeta");
     const filteredSessions = getFilteredSessions();
     const totalSessions = dashboardState ? dashboardState.sessions.length : 0;
+    const pageSize = getSessionPageSize();
+    const totalPages = Math.max(1, Math.ceil(filteredSessions.length / pageSize));
+
+    sessionTablePage = Math.min(sessionTablePage, totalPages);
+    sessionTablePage = Math.max(sessionTablePage, 1);
+
+    const startOffset = (sessionTablePage - 1) * pageSize;
+    const visibleSessions = filteredSessions.slice(startOffset, startOffset + pageSize);
+    const startIndex = visibleSessions.length ? startOffset + 1 : 0;
+    const endIndex = visibleSessions.length ? startOffset + visibleSessions.length : 0;
 
     renderActiveFilters(filteredSessions, totalSessions);
-
-    if (tableMeta) {
-        tableMeta.textContent = `${filteredSessions.length} of ${totalSessions} sessions shown`;
-    }
+    renderSessionPagination(filteredSessions.length, totalPages, sessionTablePage, startIndex, endIndex, totalSessions);
 
     if (!filteredSessions.length) {
+        selectedSessionId = null;
         tbody.innerHTML = "<tr><td colspan='9'>No session rows match the current filters.</td></tr>";
         explanationPanel.innerHTML = "<p class='empty-state'>No details to show for the current filter set.</p>";
         return;
     }
 
-    tbody.innerHTML = filteredSessions.map(function (session) {
+    tbody.innerHTML = visibleSessions.map(function (session) {
         const reasons = session.reasons.join(", ") || "none";
         return `
             <tr data-session="${encodeURIComponent(JSON.stringify(session))}" tabindex="0" role="button" aria-label="Inspect session ${session.session_id}" aria-pressed="false">
-                <td>${shortSessionId(session.session_id)}</td>
+                <td>${escapeHtml(shortSessionId(session.session_id))}</td>
                 <td>
                     <div class="table-date">
-                        <strong>${formatDateOnly(session.start_time)}</strong>
-                        <small>${formatShortTime(session.start_time)}</small>
+                        <strong>${escapeHtml(formatDateOnly(session.start_time))}</strong>
+                        <small>${escapeHtml(formatShortTime(session.start_time))}</small>
                     </div>
                 </td>
-                <td><span class="pill ${session.actor_type}">${session.actor_type}</span></td>
-                <td>${formatLabel(session.bot_type)}</td>
+                <td><span class="pill ${session.actor_type}">${escapeHtml(session.actor_type)}</span></td>
+                <td>${escapeHtml(formatLabel(session.bot_type))}</td>
                 <td><span class="risk ${scoreBadge(session.rule_score)}">${session.rule_score}</span></td>
                 <td><span class="risk ${scoreBadge(session.individual_bot_score)}">${session.individual_bot_score}</span></td>
                 <td><span class="risk ${scoreBadge(session.coordination_score)}">${session.coordination_score}</span></td>
                 <td><span class="risk ${scoreBadge(session.final_risk)}">${session.final_risk}</span></td>
-                <td>${reasons}</td>
+                <td class="reasons-cell">${escapeHtml(reasons)}</td>
             </tr>
         `;
     }).join("");
 
-    tbody.querySelectorAll("tr[data-session]").forEach(function (row, index) {
+    const rows = Array.from(tbody.querySelectorAll("tr[data-session]"));
+    let openedSelectedRow = false;
+
+    rows.forEach(function (row, index) {
         function openRow() {
-            tbody.querySelectorAll("tr[data-session]").forEach(function (candidate) {
+            rows.forEach(function (candidate) {
                 candidate.classList.remove("selected");
                 candidate.setAttribute("aria-pressed", "false");
             });
 
             row.classList.add("selected");
             row.setAttribute("aria-pressed", "true");
-            renderSessionDetails(JSON.parse(decodeURIComponent(row.dataset.session)));
+            const payload = JSON.parse(decodeURIComponent(row.dataset.session));
+            selectedSessionId = payload.session_id;
+            renderSessionDetails(payload);
+            openedSelectedRow = true;
         }
 
         row.addEventListener("click", openRow);
@@ -502,7 +611,12 @@ function renderSessions() {
             }
         });
 
-        if (index === 0) {
+        const payload = JSON.parse(decodeURIComponent(row.dataset.session));
+        if (!openedSelectedRow && payload.session_id === selectedSessionId) {
+            openRow();
+        }
+
+        if (index === 0 && !openedSelectedRow) {
             openRow();
         }
     });
@@ -698,14 +812,37 @@ function bindDemoControls() {
 }
 
 function bindTableControls() {
-    ["sessionFilter", "sessionSearch", "sessionSort"].forEach(function (id) {
+    ["sessionFilter", "sessionSearch", "sessionSort", "sessionPageSize"].forEach(function (id) {
         const element = document.getElementById(id);
         if (!element) {
             return;
         }
-        element.addEventListener("input", renderSessions);
-        element.addEventListener("change", renderSessions);
+        element.addEventListener("input", function () {
+            sessionTablePage = 1;
+            renderSessions();
+        });
+        element.addEventListener("change", function () {
+            sessionTablePage = 1;
+            renderSessions();
+        });
     });
+
+    const prevButton = document.getElementById("sessionPrevPage");
+    const nextButton = document.getElementById("sessionNextPage");
+
+    if (prevButton) {
+        prevButton.addEventListener("click", function () {
+            sessionTablePage = Math.max(1, sessionTablePage - 1);
+            renderSessions();
+        });
+    }
+
+    if (nextButton) {
+        nextButton.addEventListener("click", function () {
+            sessionTablePage += 1;
+            renderSessions();
+        });
+    }
 }
 
 function syncAutoRefresh() {

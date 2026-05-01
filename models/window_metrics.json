@@ -1,19 +1,19 @@
 {
   "status": "ready",
   "message": "Window model trained successfully.",
-  "dataset_rows": 374,
-  "train_rows": 334,
-  "test_rows": 40,
+  "dataset_rows": 510,
+  "train_rows": 469,
+  "test_rows": 41,
   "held_out_sessions": [
-    "ffa122e3-7309-4a78-bbd5-5832d99baabe",
+    "ffd821a6-07ba-4dd2-99dc-3281a8e368fb",
     "fe899d06-6d74-4e9f-8b3d-acbb4b408694"
   ],
   "label_counts": {
-    "human": 302,
-    "bot": 72
+    "human": 342,
+    "bot": 168
   },
-  "logistic_accuracy": 0.95,
-  "random_forest_accuracy": 0.95,
+  "logistic_accuracy": 0.9756,
+  "random_forest_accuracy": 0.9268,
   "feature_columns": [
     "total_events",
     "click_count",

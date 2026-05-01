@@ -13,7 +13,7 @@ PROFILE_ROOT = SELENIUM_ROOT / "profiles"
 
 
 def _headless_enabled() -> bool:
-    raw_value = os.environ.get("BOT_DEMO_HEADLESS", "1").strip().lower()
+    raw_value = os.environ.get("BOT_DEMO_HEADLESS", "0").strip().lower()
     return raw_value not in {"0", "false", "no", "off"}
 
 
