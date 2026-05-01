@@ -1,10 +1,25 @@
 let dashboardState = null;
+let autoRefreshHandle = null;
+let dashboardRequestInFlight = false;
+
+function escapeHtml(value) {
+    return String(value ?? "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#39;");
+}
 
 function setEmptyState(containerId, message) {
     const container = document.getElementById(containerId);
     if (container) {
-        container.innerHTML = `<p class="empty-state">${message}</p>`;
+        container.innerHTML = `<p class="empty-state">${escapeHtml(message)}</p>`;
     }
+}
+
+function shortSessionId(sessionId) {
+    return String(sessionId || "unknown").slice(0, 8) + "...";
 }
 
 function scoreBadge(score) {
@@ -23,6 +38,29 @@ function formatLabel(label) {
         .replace(/\b\w/g, function (match) { return match.toUpperCase(); });
 }
 
+function parseJsonResponse(response) {
+    return response.text().then(function (text) {
+        let payload = {};
+
+        if (text) {
+            try {
+                payload = JSON.parse(text);
+            } catch (error) {
+                payload = { message: text };
+            }
+        }
+
+        if (!response.ok) {
+            const requestError = new Error(payload.message || `Request failed with status ${response.status}.`);
+            requestError.payload = payload;
+            requestError.status = response.status;
+            throw requestError;
+        }
+
+        return payload;
+    });
+}
+
 function formatTimestamp(epochSeconds) {
     if (!epochSeconds) {
         return "Not available";
@@ -30,17 +68,81 @@ function formatTimestamp(epochSeconds) {
     return new Date(epochSeconds * 1000).toLocaleString();
 }
 
+function formatDateOnly(epochSeconds) {
+    if (!epochSeconds) {
+        return "Not available";
+    }
+    return new Date(epochSeconds * 1000).toLocaleDateString(undefined, {
+        year: "numeric",
+        month: "short",
+        day: "2-digit"
+    });
+}
+
+function formatShortTime(epochSeconds) {
+    if (!epochSeconds) {
+        return "n/a";
+    }
+    return new Date(epochSeconds * 1000).toLocaleTimeString(undefined, {
+        hour: "numeric",
+        minute: "2-digit",
+        second: "2-digit"
+    });
+}
+
+function formatShortDateTime(epochSeconds) {
+    if (!epochSeconds) {
+        return "Not available";
+    }
+    return formatDateOnly(epochSeconds) + " at " + formatShortTime(epochSeconds);
+}
+
+function percentWidth(score) {
+    return Math.max(0, Math.min(100, Math.round((score || 0) * 100)));
+}
+
 function renderSummary(summary) {
     const cards = [
-        ["Total Sessions", summary.total_sessions],
-        ["Human Sessions", summary.human_sessions],
-        ["Bot Sessions", summary.bot_sessions],
-        ["Coordinated Groups", summary.coordinated_groups],
-        ["Window Rows", summary.window_rows]
+        {
+            label: "Total Sessions",
+            value: summary.total_sessions,
+            note: "Complete stream in the current dataset",
+            tone: "tone-neutral"
+        },
+        {
+            label: "Human Sessions",
+            value: summary.human_sessions,
+            note: "Organic interaction baselines",
+            tone: "tone-safe"
+        },
+        {
+            label: "Bot Sessions",
+            value: summary.bot_sessions,
+            note: "Automated behaviour candidates",
+            tone: "tone-critical"
+        },
+        {
+            label: "Coordinated Groups",
+            value: summary.coordinated_groups,
+            note: "Linked clusters for review",
+            tone: "tone-warning"
+        },
+        {
+            label: "Window Rows",
+            value: summary.window_rows,
+            note: "Short-window analytic units",
+            tone: "tone-accent"
+        }
     ];
 
-    document.getElementById("summaryCards").innerHTML = cards.map(function ([label, value]) {
-        return `<div class="stat-card"><span>${label}</span><strong>${value}</strong></div>`;
+    document.getElementById("summaryCards").innerHTML = cards.map(function (card) {
+        return `
+            <div class="stat-card ${card.tone}">
+                <span class="stat-kicker">${card.label}</span>
+                <strong>${card.value}</strong>
+                <p class="stat-note">${card.note}</p>
+            </div>
+        `;
     }).join("");
 }
 
@@ -136,7 +238,15 @@ function renderGroups(groups) {
 
     document.getElementById("groupAlerts").innerHTML = groups.map(function (group) {
         const members = group.members.map(function (member) {
-            return `<li>${member.session_id.slice(0, 8)}... <span>${member.bot_type}</span></li>`;
+            return `
+                <li class="alert-member">
+                    <div>
+                        <strong>${shortSessionId(member.session_id)}</strong>
+                        <span>${formatLabel(member.bot_type)}</span>
+                        <small class="time-meta">${formatShortDateTime(member.start_time)}</small>
+                    </div>
+                </li>
+            `;
         }).join("");
         return `
             <div class="alert-card">
@@ -145,7 +255,7 @@ function renderGroups(groups) {
                     <span class="pill bot">sim ${group.similarity}</span>
                 </div>
                 <p>${group.pair_count} suspicious pair links in the same coordination cluster.</p>
-                <ul class="clean-list">${members}</ul>
+                <ul class="clean-list alert-members">${members}</ul>
             </div>
         `;
     }).join("");
@@ -191,7 +301,11 @@ function renderDistributions(sessions) {
 
     document.getElementById("distributionChart").innerHTML = distributionMarkup(
         Object.entries(byType).map(function ([label, value]) {
-            return { label: formatLabel(label), value: value, tone: label === "none" ? "safe" : "critical" };
+            return {
+                label: formatLabel(label),
+                value: value,
+                tone: label === "none" ? "safe" : "critical"
+            };
         })
     );
 
@@ -204,45 +318,50 @@ function renderDistributions(sessions) {
     );
 }
 
+function getFilterState() {
+    return {
+        selected: document.getElementById("sessionFilter") ? document.getElementById("sessionFilter").value : "all",
+        term: document.getElementById("sessionSearch") ? document.getElementById("sessionSearch").value.trim().toLowerCase() : "",
+        sortKey: document.getElementById("sessionSort") ? document.getElementById("sessionSort").value : "risk_desc"
+    };
+}
+
 function getFilteredSessions() {
     const sessions = dashboardState ? dashboardState.sessions.slice() : [];
-    const filter = document.getElementById("sessionFilter");
-    const search = document.getElementById("sessionSearch");
-    const sort = document.getElementById("sessionSort");
-    const selected = filter ? filter.value : "all";
-    const term = search ? search.value.trim().toLowerCase() : "";
-    const sortKey = sort ? sort.value : "risk_desc";
+    const state = getFilterState();
 
     const filtered = sessions.filter(function (session) {
-        if (selected === "human" && session.actor_type !== "human") {
+        if (state.selected === "human" && session.actor_type !== "human") {
             return false;
         }
-        if (selected === "bot" && session.actor_type !== "bot") {
+        if (state.selected === "bot" && session.actor_type !== "bot") {
             return false;
         }
-        if (selected === "high-risk" && session.final_risk < 0.85) {
+        if (state.selected === "high-risk" && session.final_risk < 0.85) {
             return false;
         }
-        if (!term) {
+        if (!state.term) {
             return true;
         }
         const haystack = [
             session.session_id,
             session.actor_type,
             session.bot_type,
-            session.reasons.join(" ")
+            session.reasons.join(" "),
+            formatDateOnly(session.start_time),
+            formatShortTime(session.start_time)
         ].join(" ").toLowerCase();
-        return haystack.includes(term);
+        return haystack.includes(state.term);
     });
 
     filtered.sort(function (left, right) {
-        if (sortKey === "start_desc") {
+        if (state.sortKey === "start_desc") {
             return right.start_time - left.start_time;
         }
-        if (sortKey === "start_asc") {
+        if (state.sortKey === "start_asc") {
             return left.start_time - right.start_time;
         }
-        if (sortKey === "rate_desc") {
+        if (state.sortKey === "rate_desc") {
             return right.event_rate - left.event_rate;
         }
         return right.final_risk - left.final_risk;
@@ -251,10 +370,49 @@ function getFilteredSessions() {
     return filtered;
 }
 
+function renderActiveFilters(filteredSessions, totalSessions) {
+    const state = getFilterState();
+    const chips = [];
+
+    chips.push(`<span class="filter-chip">${filteredSessions.length} of ${totalSessions} shown</span>`);
+    chips.push(`<span class="filter-chip">View: ${formatLabel(state.selected)}</span>`);
+    chips.push(`<span class="filter-chip">Sort: ${formatLabel(state.sortKey)}</span>`);
+
+    if (state.term) {
+        chips.push(`<span class="filter-chip">Search: ${state.term}</span>`);
+    }
+
+    const container = document.getElementById("activeFilters");
+    if (container) {
+        container.innerHTML = chips.join("");
+    }
+}
+
+function scoreRowMarkup(label, score) {
+    const tone = scoreBadge(score);
+    return `
+        <div class="score-row">
+            <div class="chart-label">
+                <span>${label}</span>
+                <strong>${score.toFixed(3)}</strong>
+            </div>
+            <div class="score-meter">
+                <div class="score-fill ${tone}" style="width:${percentWidth(score)}%"></div>
+            </div>
+        </div>
+    `;
+}
+
 function renderSessionDetails(payload) {
     const reasonsMarkup = payload.reasons.length
         ? payload.reasons.map(function (reason) { return `<li>${reason}</li>`; }).join("")
         : "<li>No explicit rule reasons.</li>";
+    const scoreRows = [
+        scoreRowMarkup("Rule Signal", payload.rule_score),
+        scoreRowMarkup("Model Score", payload.individual_bot_score),
+        scoreRowMarkup("Coordination Score", payload.coordination_score),
+        scoreRowMarkup("Final Risk", payload.final_risk)
+    ].join("");
 
     document.getElementById("explanationPanel").innerHTML = `
         <div class="detail-header">
@@ -265,12 +423,16 @@ function renderSessionDetails(payload) {
             <span class="posture-pill ${scoreBadge(payload.final_risk)}">Risk ${payload.final_risk}</span>
         </div>
         <div class="detail-grid">
-            <div class="metric-row"><span>Start Time</span><strong>${formatTimestamp(payload.start_time)}</strong></div>
+            <div class="metric-row"><span>Start Date</span><strong>${formatDateOnly(payload.start_time)}</strong></div>
+            <div class="metric-row"><span>Start Time</span><strong>${formatShortTime(payload.start_time)}</strong></div>
             <div class="metric-row"><span>Total Events</span><strong>${payload.total_events}</strong></div>
             <div class="metric-row"><span>Duration</span><strong>${payload.session_duration}s</strong></div>
             <div class="metric-row"><span>Event Rate</span><strong>${payload.event_rate}</strong></div>
             <div class="metric-row"><span>Sequence Entropy</span><strong>${payload.entropy}</strong></div>
             <div class="metric-row"><span>Repetition Score</span><strong>${payload.repetition_score}</strong></div>
+        </div>
+        <div class="score-stack">
+            ${scoreRows}
         </div>
         <div class="reason-block">
             <strong>Alert Reasons</strong>
@@ -286,12 +448,14 @@ function renderSessions() {
     const filteredSessions = getFilteredSessions();
     const totalSessions = dashboardState ? dashboardState.sessions.length : 0;
 
+    renderActiveFilters(filteredSessions, totalSessions);
+
     if (tableMeta) {
         tableMeta.textContent = `${filteredSessions.length} of ${totalSessions} sessions shown`;
     }
 
     if (!filteredSessions.length) {
-        tbody.innerHTML = "<tr><td colspan='8'>No session rows match the current filters.</td></tr>";
+        tbody.innerHTML = "<tr><td colspan='9'>No session rows match the current filters.</td></tr>";
         explanationPanel.innerHTML = "<p class='empty-state'>No details to show for the current filter set.</p>";
         return;
     }
@@ -300,7 +464,13 @@ function renderSessions() {
         const reasons = session.reasons.join(", ") || "none";
         return `
             <tr data-session="${encodeURIComponent(JSON.stringify(session))}" tabindex="0" role="button" aria-label="Inspect session ${session.session_id}" aria-pressed="false">
-                <td>${session.session_id.slice(0, 8)}...</td>
+                <td>${shortSessionId(session.session_id)}</td>
+                <td>
+                    <div class="table-date">
+                        <strong>${formatDateOnly(session.start_time)}</strong>
+                        <small>${formatShortTime(session.start_time)}</small>
+                    </div>
+                </td>
                 <td><span class="pill ${session.actor_type}">${session.actor_type}</span></td>
                 <td>${formatLabel(session.bot_type)}</td>
                 <td><span class="risk ${scoreBadge(session.rule_score)}">${session.rule_score}</span></td>
@@ -344,12 +514,33 @@ function renderTimeline(timeline) {
         return;
     }
 
-    document.getElementById("timeline").innerHTML = timeline.map(function (point) {
+    const timelineMarkup = timeline.map(function (point) {
+        const tone = point.label === "bot" ? "bot" : "human";
+        const descriptor = point.bot_type === "none" ? point.label : point.bot_type;
         return `
-            <div class="timeline-item ${point.label}">
-                <span>${point.session_id.slice(0, 8)}...</span>
-                <strong>${formatLabel(point.bot_type)}</strong>
-                <small>${point.event_rate} events/s</small>
+            <div class="timeline-item ${tone}">
+                <div>
+                    <span>${shortSessionId(point.session_id)}</span>
+                    <strong>${formatLabel(descriptor)}</strong>
+                </div>
+                <small>${formatDateOnly(point.start_time)} &middot; ${formatShortTime(point.start_time)} &middot; ${point.event_rate} events/s</small>
+            </div>
+        `;
+    }).join("");
+
+    document.getElementById("timeline").innerHTML = timelineMarkup;
+    return;
+
+    document.getElementById("timeline").innerHTML = timeline.map(function (point) {
+        const tone = point.label === "bot" ? "bot" : "human";
+        const descriptor = point.bot_type === "none" ? point.label : point.bot_type;
+        return `
+            <div class="timeline-item ${tone}">
+                <div>
+                    <span>${shortSessionId(point.session_id)}</span>
+                    <strong>${formatLabel(descriptor)}</strong>
+                </div>
+                <small>${formatShortTime(point.start_time)} · ${point.event_rate} events/s</small>
             </div>
         `;
     }).join("");
@@ -361,14 +552,32 @@ function renderDemoStatus(status) {
         return;
     }
 
-    const preview = status.output_preview ? `<pre class="status-log">${status.output_preview}</pre>` : "";
+    const preview = status.output_preview
+        ? `<pre class="status-log">${escapeHtml(status.output_preview)}</pre>`
+        : "";
+    const detailRow = status.detail
+        ? `<p class="status-detail">${escapeHtml(status.detail)}</p>`
+        : "";
+    const commandRow = status.failed_command
+        ? `<div class="metric-row"><span>Command</span><strong>${escapeHtml(status.failed_command)}</strong></div>`
+        : "";
     document.getElementById("demoStatus").innerHTML = `
-        <p><strong>Action:</strong> ${formatLabel(status.action)}</p>
-        <p><strong>Status:</strong> <span class="pill ${status.status === "failed" ? "bot" : status.status === "running" ? "warning-pill" : "human"}">${status.status}</span></p>
-        <p><strong>Message:</strong> ${status.message}</p>
-        <p><strong>Updated:</strong> ${status.updated_at ? formatTimestamp(status.updated_at) : "n/a"}</p>
+        <div class="metric-row"><span>Action</span><strong>${formatLabel(status.action)}</strong></div>
+        <div class="metric-row"><span>Status</span><strong><span class="pill ${status.status === "failed" ? "bot" : status.status === "running" ? "warning-pill" : "human"}">${status.status}</span></strong></div>
+        <div class="metric-row"><span>Message</span><strong>${escapeHtml(status.message)}</strong></div>
+        <div class="metric-row"><span>Updated</span><strong>${status.updated_at ? formatTimestamp(status.updated_at) : "n/a"}</strong></div>
+        ${commandRow}
+        ${detailRow}
         ${preview}
     `;
+}
+
+function updateDashboardTimestamp() {
+    const label = document.getElementById("dashboardUpdatedAt");
+    if (!label) {
+        return;
+    }
+    label.textContent = "Last refreshed at " + new Date().toLocaleTimeString();
 }
 
 function renderAll(data) {
@@ -383,37 +592,61 @@ function renderAll(data) {
     renderDistributions(data.sessions);
     renderDemoStatus(data.demo_status);
     renderSessions();
+    updateDashboardTimestamp();
+}
+
+function setRefreshButtonState(isLoading) {
+    const button = document.getElementById("refreshDashboardControl");
+    if (!button) {
+        return;
+    }
+    button.disabled = isLoading;
+    button.textContent = isLoading ? "Refreshing..." : "Refresh Snapshot";
 }
 
 function refreshDashboard() {
+    if (dashboardRequestInFlight) {
+        return Promise.resolve();
+    }
+
+    dashboardRequestInFlight = true;
+    setRefreshButtonState(true);
+
     return fetch("/api/dashboard")
-        .then(function (response) {
-            if (!response.ok) {
-                throw new Error("Dashboard data could not be loaded.");
-            }
-            return response.json();
-        })
+        .then(parseJsonResponse)
         .then(function (data) {
             renderAll(data);
         })
-        .catch(function () {
-            setEmptyState("postureCard", "Dashboard data is temporarily unavailable.");
-            setEmptyState("modelHealth", "Model health data could not be loaded.");
-            setEmptyState("dataStatus", "Data freshness details could not be loaded.");
-            setEmptyState("featureSummary", "Feature summary could not be loaded.");
-            setEmptyState("distributionChart", "Distribution data could not be loaded.");
-            setEmptyState("riskChart", "Risk band data could not be loaded.");
-            setEmptyState("groupAlerts", "Group alerts could not be loaded.");
-            setEmptyState("timeline", "Timeline data could not be loaded.");
-            setEmptyState("demoStatus", "Demo status could not be loaded.");
+        .catch(function (error) {
+            const message = error && error.message ? error.message : "Dashboard data could not be loaded.";
+            setEmptyState("postureCard", message);
+            setEmptyState("modelHealth", message);
+            setEmptyState("dataStatus", message);
+            setEmptyState("featureSummary", message);
+            setEmptyState("distributionChart", message);
+            setEmptyState("riskChart", message);
+            setEmptyState("groupAlerts", message);
+            setEmptyState("timeline", message);
+            setEmptyState("demoStatus", message);
             document.getElementById("summaryCards").innerHTML = "";
-            document.getElementById("sessionRows").innerHTML = "<tr><td colspan='8'>Dashboard data could not be loaded.</td></tr>";
+            document.getElementById("sessionRows").innerHTML = `<tr><td colspan='9'>${escapeHtml(message)}</td></tr>`;
             document.getElementById("explanationPanel").innerHTML = "<p class='empty-state'>Select a session row to view its strongest explanation details.</p>";
+            document.getElementById("activeFilters").innerHTML = "";
             const tableMeta = document.getElementById("sessionTableMeta");
             if (tableMeta) {
                 tableMeta.textContent = "0 of 0 sessions shown";
             }
+        })
+        .finally(function () {
+            dashboardRequestInFlight = false;
+            setRefreshButtonState(false);
         });
+}
+
+function setDemoButtonsDisabled(isDisabled) {
+    document.querySelectorAll(".demo-action").forEach(function (button) {
+        button.disabled = isDisabled;
+    });
 }
 
 function bindDemoControls() {
@@ -421,8 +654,17 @@ function bindDemoControls() {
         button.addEventListener("click", function () {
             const action = button.dataset.action;
             const originalText = button.textContent;
-            button.disabled = true;
+            setDemoButtonsDisabled(true);
             button.textContent = "Running...";
+            renderDemoStatus({
+                action: action,
+                status: "running",
+                message: `Running ${formatLabel(action)}...`,
+                detail: "This may take a moment while the browser runner and analytics pipeline finish.",
+                updated_at: Date.now() / 1000,
+                output_preview: "",
+                failed_command: ""
+            });
 
             fetch("/api/demo-action", {
                 method: "POST",
@@ -431,23 +673,24 @@ function bindDemoControls() {
                 },
                 body: JSON.stringify({ action: action })
             })
-                .then(function (response) {
-                    if (!response.ok) {
-                        throw new Error("Demo action failed.");
-                    }
-                    return response.json();
-                })
+                .then(parseJsonResponse)
                 .then(function (payload) {
-                    if (payload.status !== "ok") {
-                        alert(payload.output || payload.message || "Action failed.");
-                    }
+                    renderDemoStatus(payload);
                     return refreshDashboard();
                 })
-                .catch(function () {
-                    setEmptyState("demoStatus", "The demo action could not be completed.");
+                .catch(function (error) {
+                    renderDemoStatus({
+                        action: action,
+                        status: "failed",
+                        message: error && error.message ? error.message : "The demo action could not be completed.",
+                        detail: error && error.payload && error.payload.detail ? error.payload.detail : "The request did not finish cleanly, so the dashboard could not confirm the result.",
+                        updated_at: Date.now() / 1000,
+                        output_preview: error && error.payload && error.payload.output ? error.payload.output : "",
+                        failed_command: error && error.payload && error.payload.failed_command ? error.payload.failed_command : ""
+                    });
                 })
                 .finally(function () {
-                    button.disabled = false;
+                    setDemoButtonsDisabled(false);
                     button.textContent = originalText;
                 });
         });
@@ -465,7 +708,38 @@ function bindTableControls() {
     });
 }
 
+function syncAutoRefresh() {
+    if (autoRefreshHandle) {
+        window.clearInterval(autoRefreshHandle);
+        autoRefreshHandle = null;
+    }
+
+    const toggle = document.getElementById("autoRefreshToggle");
+    if (toggle && toggle.checked) {
+        autoRefreshHandle = window.setInterval(function () {
+            refreshDashboard();
+        }, 30000);
+    }
+}
+
+function bindDashboardControls() {
+    const refreshButton = document.getElementById("refreshDashboardControl");
+    const autoRefreshToggle = document.getElementById("autoRefreshToggle");
+
+    if (refreshButton) {
+        refreshButton.addEventListener("click", function () {
+            refreshDashboard();
+        });
+    }
+
+    if (autoRefreshToggle) {
+        autoRefreshToggle.addEventListener("change", syncAutoRefresh);
+    }
+}
+
 refreshDashboard().finally(function () {
     bindDemoControls();
     bindTableControls();
+    bindDashboardControls();
+    syncAutoRefresh();
 });

@@ -5,7 +5,7 @@
       "major_browser_version": "147",
       "driver_name": "chromedriver",
       "driver_version": "147.0.7727.117",
-      "driver_ttl": 1777527365
+      "driver_ttl": 1777535661
     }
   ],
   "stats": [
@@ -16,7 +16,16 @@
       "arch": "x86_64",
       "lang": "python",
       "selenium_version": "4.38",
-      "stats_ttl": 1777527332
+      "stats_ttl": 1777535648
+    },
+    {
+      "browser": "chrome",
+      "browser_version": "",
+      "os": "windows",
+      "arch": "x86_64",
+      "lang": "python",
+      "selenium_version": "4.41",
+      "stats_ttl": 1777536078
     }
   ]
 }

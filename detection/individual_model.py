@@ -2,12 +2,15 @@
 
 import pandas as pd
 
+from artifact_store import resolve_artifact_path
+
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_DATA_FILE = PROJECT_ROOT / "data" / "features.csv"
 DROP_COLUMNS = ["session_id", "actor_type", "bot_type", "label", "start_time"]
 
 
 def load_training_dataset(data_file: Path = DEFAULT_DATA_FILE):
+    data_file = resolve_artifact_path(data_file)
     if not data_file.exists():
         print(f"Feature file not found: {data_file}")
         return None

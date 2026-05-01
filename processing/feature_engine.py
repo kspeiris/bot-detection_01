@@ -3,6 +3,8 @@ from typing import Dict, List
 
 import pandas as pd
 
+from artifact_store import write_dataframe_artifact
+
 from processing.fingerprint_engine import build_symbol_sequence, ngram_counts, repetition_score, sequence_entropy
 from processing.window_builder import build_fixed_windows
 
@@ -174,9 +176,7 @@ def build_window_feature_dataframe(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def save_feature_dataframe(features_df: pd.DataFrame, output_file: Path = DEFAULT_OUTPUT_FILE) -> Path:
-    output_file.parent.mkdir(parents=True, exist_ok=True)
-    features_df.to_csv(output_file, index=False)
-    return output_file
+    return write_dataframe_artifact(features_df, output_file, index=False)
 
 
 def extract_features_to_csv(input_file: Path = DEFAULT_INPUT_FILE, output_file: Path = DEFAULT_OUTPUT_FILE) -> pd.DataFrame:

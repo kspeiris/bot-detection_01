@@ -1,12 +1,10 @@
 ﻿from pathlib import Path
-import json
 import sys
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-import joblib
 import matplotlib
 
 matplotlib.use("Agg")
@@ -16,6 +14,7 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import train_test_split
 
+from artifact_store import remove_artifact_variants, resolve_artifact_path, write_joblib_artifact, write_json_artifact, write_matplotlib_figure
 from detection.individual_model import load_training_dataset, split_features_and_labels
 
 MODEL_FILE = PROJECT_ROOT / "models" / "bot_model.pkl"
@@ -27,8 +26,7 @@ ARTIFACTS = [MODEL_FILE, LOGISTIC_MODEL_FILE, IMPORTANCE_PLOT]
 
 def reset_artifacts(message, extra=None):
     METRICS_FILE.parent.mkdir(parents=True, exist_ok=True)
-    for artifact in ARTIFACTS:
-        artifact.unlink(missing_ok=True)
+    remove_artifact_variants(ARTIFACTS + [METRICS_FILE])
 
     payload = {
         "status": "unavailable",
@@ -43,7 +41,7 @@ def reset_artifacts(message, extra=None):
     }
     if extra:
         payload.update(extra)
-    METRICS_FILE.write_text(json.dumps(payload, indent=2))
+    write_json_artifact(payload, METRICS_FILE)
 
 
 def evaluate_model(name, model, X_test, y_test):
@@ -59,14 +57,14 @@ def evaluate_model(name, model, X_test, y_test):
 def save_feature_importance(model, feature_names):
     IMPORTANCE_PLOT.parent.mkdir(parents=True, exist_ok=True)
     importances = pd.Series(model.feature_importances_, index=feature_names).sort_values()
-    plt.figure(figsize=(8, 5))
-    plt.barh(importances.index, importances.values)
-    plt.xlabel("Importance")
-    plt.title("Random Forest Feature Importance")
-    plt.tight_layout()
-    plt.savefig(IMPORTANCE_PLOT, dpi=150)
-    plt.close()
-    print(f"Saved feature importance plot to {IMPORTANCE_PLOT}")
+    figure, axis = plt.subplots(figsize=(8, 5))
+    axis.barh(importances.index, importances.values)
+    axis.set_xlabel("Importance")
+    axis.set_title("Random Forest Feature Importance")
+    figure.tight_layout()
+    saved_to = write_matplotlib_figure(figure, IMPORTANCE_PLOT, dpi=150)
+    plt.close(figure)
+    print(f"Saved feature importance plot to {saved_to}")
     print("=== Feature Importance ===")
     print(importances.sort_values(ascending=False).to_string())
 
@@ -107,12 +105,12 @@ def main():
     logistic_model.fit(X_train, y_train)
     logistic_accuracy = evaluate_model("Logistic Regression", logistic_model, X_test, y_test)
     LOGISTIC_MODEL_FILE.parent.mkdir(parents=True, exist_ok=True)
-    joblib.dump(logistic_model, LOGISTIC_MODEL_FILE)
+    write_joblib_artifact(logistic_model, LOGISTIC_MODEL_FILE)
 
     rf_model = RandomForestClassifier(n_estimators=100, max_depth=5, random_state=42)
     rf_model.fit(X_train, y_train)
     rf_accuracy = evaluate_model("Random Forest", rf_model, X_test, y_test)
-    joblib.dump(rf_model, MODEL_FILE)
+    write_joblib_artifact(rf_model, MODEL_FILE)
     save_feature_importance(rf_model, X.columns)
 
     xgb_accuracy = train_xgboost_if_available(X_train, X_test, y_train, y_test)
@@ -123,23 +121,22 @@ def main():
     if xgb_accuracy is not None:
         print(f"XGBoost: {xgb_accuracy:.4f}")
 
-    METRICS_FILE.write_text(
-        json.dumps(
-            {
-                "status": "ready",
-                "message": "Session model trained successfully.",
-                "dataset_rows": int(len(df)),
-                "train_rows": int(len(X_train)),
-                "test_rows": int(len(X_test)),
-                "label_counts": {str(label): int(count) for label, count in y.value_counts().to_dict().items()},
-                "logistic_accuracy": round(float(logistic_accuracy), 4),
-                "random_forest_accuracy": round(float(rf_accuracy), 4),
-                "xgboost_accuracy": round(float(xgb_accuracy), 4) if xgb_accuracy is not None else None,
-                "feature_columns": list(X.columns),
-            },
-            indent=2,
-        )
+    write_json_artifact(
+        {
+            "status": "ready",
+            "message": "Session model trained successfully.",
+            "dataset_rows": int(len(df)),
+            "train_rows": int(len(X_train)),
+            "test_rows": int(len(X_test)),
+            "label_counts": {str(label): int(count) for label, count in y.value_counts().to_dict().items()},
+            "logistic_accuracy": round(float(logistic_accuracy), 4),
+            "random_forest_accuracy": round(float(rf_accuracy), 4),
+            "xgboost_accuracy": round(float(xgb_accuracy), 4) if xgb_accuracy is not None else None,
+            "feature_columns": list(X.columns),
+        },
+        METRICS_FILE,
     )
+    print(f"Saved session metrics to {resolve_artifact_path(METRICS_FILE)}")
 
 
 if __name__ == "__main__":

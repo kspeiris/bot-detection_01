@@ -11,19 +11,28 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import pandas as pd
 
+from artifact_store import resolve_artifact_path, write_matplotlib_figure
 from detection.coordination_engine import build_similarity_matrix, cluster_pairs, find_suspicious_pairs, select_candidate_sessions
 
 WINDOW_FEATURES_FILE = PROJECT_ROOT / "data" / "window_features.csv"
-FEATURES_FILE = WINDOW_FEATURES_FILE if WINDOW_FEATURES_FILE.exists() else PROJECT_ROOT / "data" / "features.csv"
+SESSION_FEATURES_FILE = PROJECT_ROOT / "data" / "features.csv"
 HEATMAP_FILE = PROJECT_ROOT / "coordination_analysis" / "similarity_matrix.png"
 
 
+def preferred_features_file():
+    window_file = resolve_artifact_path(WINDOW_FEATURES_FILE)
+    if window_file.exists():
+        return window_file
+    return resolve_artifact_path(SESSION_FEATURES_FILE)
+
+
 def load_features():
-    if not FEATURES_FILE.exists():
-        print(f"Feature file not found: {FEATURES_FILE}")
+    features_file = preferred_features_file()
+    if not features_file.exists():
+        print(f"Feature file not found: {features_file}")
         return None
 
-    df = pd.read_csv(FEATURES_FILE)
+    df = pd.read_csv(features_file)
     if df.empty:
         print("Feature file is empty. Run feature extraction after collecting sessions.")
         return None
@@ -39,14 +48,14 @@ def load_features():
 
 
 def save_heatmap(similarity_matrix):
-    plt.figure(figsize=(6, 5))
-    plt.imshow(similarity_matrix, cmap="hot", interpolation="nearest")
-    plt.colorbar(label="Cosine similarity")
-    plt.title("Bot Window Similarity Matrix")
-    plt.tight_layout()
-    plt.savefig(HEATMAP_FILE, dpi=150)
-    plt.close()
-    print(f"Saved similarity heatmap to {HEATMAP_FILE}")
+    figure, axis = plt.subplots(figsize=(6, 5))
+    image = axis.imshow(similarity_matrix, cmap="hot", interpolation="nearest")
+    figure.colorbar(image, ax=axis, label="Cosine similarity")
+    axis.set_title("Bot Window Similarity Matrix")
+    figure.tight_layout()
+    saved_to = write_matplotlib_figure(figure, HEATMAP_FILE, dpi=150)
+    plt.close(figure)
+    print(f"Saved similarity heatmap to {saved_to}")
 
 
 def unique_session_pairs(candidate_df, pairs):

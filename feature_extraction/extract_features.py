@@ -5,7 +5,8 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from processing.feature_engine import FEATURE_COLUMNS, extract_features_to_csv, extract_window_features_to_csv
+from artifact_store import resolve_artifact_path
+from processing.feature_engine import FEATURE_COLUMNS, extract_features_to_csv, extract_window_features_to_csv, save_feature_dataframe
 
 INPUT_FILE = PROJECT_ROOT / "data" / "events.csv"
 OUTPUT_FILE = PROJECT_ROOT / "data" / "features.csv"
@@ -22,13 +23,13 @@ def main():
 
     if features_df.empty:
         empty_df = features_df.reindex(columns=FEATURE_COLUMNS)
-        empty_df.to_csv(OUTPUT_FILE, index=False)
-        print(f"No valid events found. Created empty feature file at {OUTPUT_FILE}")
+        saved_to = save_feature_dataframe(empty_df, OUTPUT_FILE)
+        print(f"No valid events found. Created empty feature file at {saved_to}")
         return
 
-    print(f"Feature extraction complete. Saved session features to {OUTPUT_FILE}")
+    print(f"Feature extraction complete. Saved session features to {resolve_artifact_path(OUTPUT_FILE)}")
     print(features_df)
-    print(f"Window feature extraction complete. Saved to {WINDOW_OUTPUT_FILE}")
+    print(f"Window feature extraction complete. Saved to {resolve_artifact_path(WINDOW_OUTPUT_FILE)}")
     print(window_features_df.head())
 
 

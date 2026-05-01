@@ -12,6 +12,7 @@ import joblib
 import pandas as pd
 from flask import Flask, jsonify, render_template, request, session
 
+from artifact_store import resolve_artifact_path
 from detection.coordination_engine import (
     build_similarity_matrix,
     cluster_pairs,
@@ -80,8 +81,10 @@ LAST_DEMO_RUN = {
     "action": "idle",
     "status": "ready",
     "message": "Dashboard controls are ready.",
+    "detail": "Choose a demo action to generate traffic or refresh analytics.",
     "updated_at": None,
     "output_preview": "",
+    "failed_command": "",
 }
 
 
@@ -153,7 +156,8 @@ def render_user_page(page_key):
 
 
 def read_feature_frame(prefer_windows=False):
-    path = WINDOW_FEATURES_PATH if prefer_windows and WINDOW_FEATURES_PATH.exists() else FEATURES_PATH
+    window_path = resolve_artifact_path(WINDOW_FEATURES_PATH)
+    path = window_path if prefer_windows and window_path.exists() else resolve_artifact_path(FEATURES_PATH)
     if not path.exists():
         return pd.DataFrame()
     try:
@@ -163,6 +167,7 @@ def read_feature_frame(prefer_windows=False):
 
 
 def load_model(path):
+    path = resolve_artifact_path(path)
     if not path.exists():
         return None
     try:
@@ -172,6 +177,7 @@ def load_model(path):
 
 
 def load_json_payload(path):
+    path = resolve_artifact_path(path)
     if not path.exists():
         return {}
     try:
@@ -181,12 +187,62 @@ def load_json_payload(path):
 
 
 def file_updated_at(path):
+    path = resolve_artifact_path(path)
     if not path.exists():
         return None
     try:
         return round(path.stat().st_mtime, 3)
     except OSError:
         return None
+
+
+def humanize_action_name(action_name):
+    return action_name.replace("_", " ").title()
+
+
+def format_command(command):
+    return " ".join(command) if command else ""
+
+
+def summarize_demo_failure(action_name, command, output, timed_out=False):
+    summary = f"{humanize_action_name(action_name)} could not complete."
+    detail = "Review the trace below for the exact command failure."
+    normalized = output.lower()
+
+    if timed_out:
+        summary = f"{humanize_action_name(action_name)} timed out."
+        detail = "The task took longer than five minutes. Try the smaller actions first or rerun once the app is idle."
+    elif "devtoolsactiveport" in normalized or "sessionnotcreatedexception" in normalized:
+        summary = "Chrome could not start for the automated browser run."
+        detail = "The runner now requests a headless Chrome profile. If this still fails, confirm Chrome is installed and available to Selenium on this machine."
+    elif "nosuchdriverexception" in normalized or "unable to obtain driver" in normalized:
+        summary = "Selenium could not prepare a working Chrome driver."
+        detail = "Check the local Chrome install and verify the Selenium cache directory is writable."
+    elif "permissionerror" in normalized:
+        summary = "A generated analytics artifact is locked by another process."
+        detail = "Close any spreadsheet or file viewer that has the generated CSV, model, or metrics files open, then run the action again."
+    elif "training requires both human and bot sessions" in normalized:
+        summary = "Analytics refresh needs both human and bot sessions."
+        detail = "Collect at least one human session and one bot session before retraining."
+    elif "each class needs at least 2 sessions" in normalized or "need at least 2 unique sessions per class" in normalized:
+        summary = "Analytics refresh needs more example sessions."
+        detail = "Collect at least two sessions per class so the training split can run safely."
+    elif "feature file is empty" in normalized or "window feature file is empty" in normalized:
+        summary = "Analytics refresh did not find enough captured events to build features."
+        detail = "Generate fresh user or bot activity first, then rerun the analytics refresh."
+    elif "feature file not found" in normalized or "input file not found" in normalized:
+        summary = "The analytics pipeline could not find its input dataset."
+        detail = "Verify that event collection has started and the expected data files exist."
+
+    return {
+        "status": "error",
+        "action": action_name,
+        "message": summary,
+        "detail": detail,
+        "failed_command": format_command(command),
+        "output": output.strip(),
+        "output_preview": output.strip()[:1200],
+    }
 
 
 def model_scores(frame, model):
@@ -401,14 +457,19 @@ def dashboard_payload():
 def run_demo_commands(commands, action_name):
     env = os.environ.copy()
     env["SE_CACHE_PATH"] = str(SELENIUM_CACHE)
+    env.setdefault("BOT_DEMO_HEADLESS", "1")
+    env.setdefault("BOT_DEMO_DRIVER_MODE", "synthetic")
+    env.setdefault("PYTHONUNBUFFERED", "1")
     SELENIUM_CACHE.mkdir(parents=True, exist_ok=True)
 
     outputs = []
     LAST_DEMO_RUN["action"] = action_name
     LAST_DEMO_RUN["status"] = "running"
-    LAST_DEMO_RUN["message"] = f"Running {action_name}..."
+    LAST_DEMO_RUN["message"] = f"Running {humanize_action_name(action_name)}..."
+    LAST_DEMO_RUN["detail"] = f"Executing {len(commands)} step(s) in sequence."
     LAST_DEMO_RUN["updated_at"] = round(time.time(), 3)
     LAST_DEMO_RUN["output_preview"] = ""
+    LAST_DEMO_RUN["failed_command"] = ""
 
     try:
         for command in commands:
@@ -418,6 +479,7 @@ def run_demo_commands(commands, action_name):
                 env=env,
                 capture_output=True,
                 text=True,
+                errors="replace",
                 timeout=300,
                 check=True,
             )
@@ -426,23 +488,38 @@ def run_demo_commands(commands, action_name):
                 outputs.append(text)
 
         LAST_DEMO_RUN["status"] = "completed"
-        LAST_DEMO_RUN["message"] = f"{action_name} completed successfully."
+        LAST_DEMO_RUN["message"] = f"{humanize_action_name(action_name)} completed successfully."
+        LAST_DEMO_RUN["detail"] = f"Executed {len(commands)} step(s) without errors."
         LAST_DEMO_RUN["updated_at"] = round(time.time(), 3)
         LAST_DEMO_RUN["output_preview"] = "\n\n".join(outputs[-2:])[:1200]
-        return {"status": "ok", "action": action_name, "output": "\n\n".join(outputs[-4:])}
+        LAST_DEMO_RUN["failed_command"] = ""
+        return {
+            "status": "ok",
+            "action": action_name,
+            "message": LAST_DEMO_RUN["message"],
+            "detail": LAST_DEMO_RUN["detail"],
+            "output": "\n\n".join(outputs[-4:]),
+            "output_preview": LAST_DEMO_RUN["output_preview"],
+        }
     except subprocess.CalledProcessError as exc:
         error_text = (exc.stdout or "") + ("\n" if exc.stdout and exc.stderr else "") + (exc.stderr or "")
+        result = summarize_demo_failure(action_name, exc.cmd, error_text)
         LAST_DEMO_RUN["status"] = "failed"
-        LAST_DEMO_RUN["message"] = f"{action_name} failed."
+        LAST_DEMO_RUN["message"] = result["message"]
+        LAST_DEMO_RUN["detail"] = result["detail"]
         LAST_DEMO_RUN["updated_at"] = round(time.time(), 3)
-        LAST_DEMO_RUN["output_preview"] = error_text.strip()[:1200]
-        return {"status": "error", "action": action_name, "output": error_text.strip()}
-    except subprocess.TimeoutExpired:
+        LAST_DEMO_RUN["output_preview"] = result["output_preview"]
+        LAST_DEMO_RUN["failed_command"] = result["failed_command"]
+        return result
+    except subprocess.TimeoutExpired as exc:
+        result = summarize_demo_failure(action_name, exc.cmd, "Command timed out.", timed_out=True)
         LAST_DEMO_RUN["status"] = "failed"
-        LAST_DEMO_RUN["message"] = f"{action_name} timed out."
+        LAST_DEMO_RUN["message"] = result["message"]
+        LAST_DEMO_RUN["detail"] = result["detail"]
         LAST_DEMO_RUN["updated_at"] = round(time.time(), 3)
-        LAST_DEMO_RUN["output_preview"] = "Command timed out."
-        return {"status": "error", "action": action_name, "output": "Command timed out."}
+        LAST_DEMO_RUN["output_preview"] = result["output_preview"]
+        LAST_DEMO_RUN["failed_command"] = result["failed_command"]
+        return result
 
 
 ensure_csv_schema()

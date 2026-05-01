@@ -1,12 +1,10 @@
 ﻿from pathlib import Path
-import json
 import sys
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-import joblib
 import matplotlib
 
 matplotlib.use("Agg")
@@ -14,6 +12,8 @@ import matplotlib.pyplot as plt
 import pandas as pd
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
+
+from artifact_store import remove_artifact_variants, resolve_artifact_path, write_joblib_artifact, write_json_artifact, write_matplotlib_figure
 
 WINDOW_FILE = PROJECT_ROOT / "data" / "window_features.csv"
 MODEL_FILE = PROJECT_ROOT / "models" / "window_bot_model.pkl"
@@ -26,8 +26,7 @@ DROP_COLUMNS = ["analysis_unit_id", "session_id", "actor_type", "bot_type", "lab
 
 def reset_artifacts(message, extra=None):
     METRICS_FILE.parent.mkdir(parents=True, exist_ok=True)
-    for artifact in ARTIFACTS:
-        artifact.unlink(missing_ok=True)
+    remove_artifact_variants(ARTIFACTS + [METRICS_FILE])
 
     payload = {
         "status": "unavailable",
@@ -42,14 +41,15 @@ def reset_artifacts(message, extra=None):
     }
     if extra:
         payload.update(extra)
-    METRICS_FILE.write_text(json.dumps(payload, indent=2))
+    write_json_artifact(payload, METRICS_FILE)
 
 
 def load_dataset():
-    if not WINDOW_FILE.exists():
-        print(f"Window feature file not found: {WINDOW_FILE}")
+    window_file = resolve_artifact_path(WINDOW_FILE)
+    if not window_file.exists():
+        print(f"Window feature file not found: {window_file}")
         return None
-    df = pd.read_csv(WINDOW_FILE)
+    df = pd.read_csv(window_file)
     if df.empty:
         print("Window feature file is empty. Run feature extraction first.")
         return None
@@ -83,14 +83,14 @@ def evaluate_model(name, model, X_test, y_test):
 def save_feature_importance(model, feature_names):
     IMPORTANCE_PLOT.parent.mkdir(parents=True, exist_ok=True)
     importances = pd.Series(model.feature_importances_, index=feature_names).sort_values()
-    plt.figure(figsize=(9, 7))
-    plt.barh(importances.index, importances.values)
-    plt.xlabel("Importance")
-    plt.title("Window Random Forest Feature Importance")
-    plt.tight_layout()
-    plt.savefig(IMPORTANCE_PLOT, dpi=150)
-    plt.close()
-    print(f"Saved window feature importance plot to {IMPORTANCE_PLOT}")
+    figure, axis = plt.subplots(figsize=(9, 7))
+    axis.barh(importances.index, importances.values)
+    axis.set_xlabel("Importance")
+    axis.set_title("Window Random Forest Feature Importance")
+    figure.tight_layout()
+    saved_to = write_matplotlib_figure(figure, IMPORTANCE_PLOT, dpi=150)
+    plt.close(figure)
+    print(f"Saved window feature importance plot to {saved_to}")
 
 
 def main():
@@ -106,35 +106,34 @@ def main():
     logistic_model.fit(X_train, y_train)
     logistic_accuracy = evaluate_model("Window Logistic Regression", logistic_model, X_test, y_test)
     LOGISTIC_MODEL_FILE.parent.mkdir(parents=True, exist_ok=True)
-    joblib.dump(logistic_model, LOGISTIC_MODEL_FILE)
+    write_joblib_artifact(logistic_model, LOGISTIC_MODEL_FILE)
 
     rf_model = RandomForestClassifier(n_estimators=100, max_depth=5, random_state=42)
     rf_model.fit(X_train, y_train)
     rf_accuracy = evaluate_model("Window Random Forest", rf_model, X_test, y_test)
-    joblib.dump(rf_model, MODEL_FILE)
+    write_joblib_artifact(rf_model, MODEL_FILE)
     save_feature_importance(rf_model, feature_columns)
 
     print("=== Window Model Comparison ===")
     print(f"Logistic Regression: {logistic_accuracy:.4f}")
     print(f"Random Forest: {rf_accuracy:.4f}")
 
-    METRICS_FILE.write_text(
-        json.dumps(
-            {
-                "status": "ready",
-                "message": "Window model trained successfully.",
-                "dataset_rows": int(len(df)),
-                "train_rows": int(len(X_train)),
-                "test_rows": int(len(X_test)),
-                "held_out_sessions": held_out_sessions,
-                "label_counts": {str(label): int(count) for label, count in df["label"].value_counts().to_dict().items()},
-                "logistic_accuracy": round(float(logistic_accuracy), 4),
-                "random_forest_accuracy": round(float(rf_accuracy), 4),
-                "feature_columns": feature_columns,
-            },
-            indent=2,
-        )
+    write_json_artifact(
+        {
+            "status": "ready",
+            "message": "Window model trained successfully.",
+            "dataset_rows": int(len(df)),
+            "train_rows": int(len(X_train)),
+            "test_rows": int(len(X_test)),
+            "held_out_sessions": held_out_sessions,
+            "label_counts": {str(label): int(count) for label, count in df["label"].value_counts().to_dict().items()},
+            "logistic_accuracy": round(float(logistic_accuracy), 4),
+            "random_forest_accuracy": round(float(rf_accuracy), 4),
+            "feature_columns": feature_columns,
+        },
+        METRICS_FILE,
     )
+    print(f"Saved window metrics to {resolve_artifact_path(METRICS_FILE)}")
 
 
 if __name__ == "__main__":
